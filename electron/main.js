@@ -4,35 +4,16 @@ const { registerResearchAgentIpc } = require('./research-agent/ipc')
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
-const PADDING = 10
-/** Position a window of the given size at the top-right of the work area with padding. */
-function getButtonBounds(width, height) {
-  const work = screen.getPrimaryDisplay().workArea
-  return {
-    x: work.x + work.width - width - PADDING,
-    y: work.y + PADDING,
-    width,
-    height,
-  }
-}
+let mainWindow
 
-function getModalBounds() {
+function createWindow() {
   const work = screen.getPrimaryDisplay().workArea
-  return {
+
+  mainWindow = new BrowserWindow({
     x: work.x,
     y: work.y,
     width: work.width,
     height: work.height,
-  }
-}
-
-function createWindow() {
-  const initialWidth = 52
-  const initialHeight = 52
-  const bounds = getButtonBounds(initialWidth, initialHeight)
-
-  mainWindow = new BrowserWindow({
-    ...bounds,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
@@ -49,6 +30,8 @@ function createWindow() {
   })
 
   mainWindow.setAlwaysOnTop(true, 'floating')
+  // Click-through by default; renderer will opt-in interactive regions.
+  mainWindow.setIgnoreMouseEvents(true, { forward: true })
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173')
@@ -64,23 +47,14 @@ app.whenReady().then(() => {
     userDataPath: app.getPath('userData'),
   })
 
-  ipcMain.handle('set-window-mode', (_, mode, width, height) => {
-    if (!mainWindow || mainWindow.isDestroyed()) return
-    if (mode === 'modal') {
-      mainWindow.setBounds(getModalBounds())
-      return
-    }
-
-    const w = Number(width)
-    const h = Number(height)
-    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
-      mainWindow.setBounds(getButtonBounds(w, h))
-    } else {
-      mainWindow.setBounds(getButtonBounds(52, 52))
-    }
-  })
-
   createWindow()
+})
+
+ipcMain.on('overlay:set-interactive', (_, interactive) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  const enabled = Boolean(interactive)
+  // interactive=true => receive mouse; interactive=false => click-through.
+  mainWindow.setIgnoreMouseEvents(!enabled, { forward: true })
 })
 
 app.on('window-all-closed', () => {

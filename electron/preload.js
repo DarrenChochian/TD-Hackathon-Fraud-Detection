@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
-  setWindowMode: (mode, width, height) => ipcRenderer.invoke('set-window-mode', mode, width, height),
+  setOverlayInteractivity: (interactive) => ipcRenderer.send('overlay:set-interactive', interactive),
   runResearch: (prompt) => ipcRenderer.invoke('research:run', { prompt }),
   onResearchEvent: (callback) => {
     const listener = (_, payload) => callback(payload)

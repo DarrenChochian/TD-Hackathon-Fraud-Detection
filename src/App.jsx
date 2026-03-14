@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import CircularText from './components/CircularText'
 
 function WaveformIcon({ className }) {
@@ -37,20 +37,55 @@ export default function App() {
   )
   const [input, setInput] = useState('')
   const [selectedChatId, setSelectedChatId] = useState(null)
+  const interactiveHoverCountRef = useRef(0)
+
+  const setOverlayInteractivity = (interactive) => {
+    window.electronAPI?.setOverlayInteractivity?.(interactive)
+  }
+
+  const resetOverlayInteractivity = () => {
+    interactiveHoverCountRef.current = 0
+    setOverlayInteractivity(false)
+  }
+
+  const handleInteractiveEnter = () => {
+    interactiveHoverCountRef.current += 1
+    if (interactiveHoverCountRef.current === 1) {
+      setOverlayInteractivity(true)
+    }
+  }
+
+  const handleInteractiveLeave = () => {
+    interactiveHoverCountRef.current = Math.max(0, interactiveHoverCountRef.current - 1)
+    if (interactiveHoverCountRef.current === 0) {
+      setOverlayInteractivity(false)
+    }
+  }
 
   useEffect(() => {
-    if (!modalOpen && window.electronAPI?.setWindowMode) {
-      window.electronAPI.setWindowMode('button', BUTTON_WIDTH, BUTTON_HEIGHT)
-    }
-  }, [modalOpen])
+    // Default to click-through; interactive regions opt in on hover.
+    setOverlayInteractivity(false)
+    return () => setOverlayInteractivity(false)
+  }, [])
+
+  const handleOverlayClose = () => {
+    setModalOpen(false)
+    setSelectedChatId(null)
+    resetOverlayInteractivity()
+  }
+
+  const handleChatClose = () => {
+    setSelectedChatId(null)
+    resetOverlayInteractivity()
+  }
 
   const handleToggle = () => {
-    setModalOpen((v) => !v)
-    if (!modalOpen) {
-      window.electronAPI?.setWindowMode?.('modal')
-    } else {
-      window.electronAPI.setWindowMode?.('button', BUTTON_WIDTH, BUTTON_HEIGHT)
+    if (modalOpen) {
+      handleOverlayClose()
+      return
     }
+    setModalOpen(true)
+    setSelectedChatId(placeholderHistory[0]?.id ?? null)
   }
 
   const handleSend = (e) => {
@@ -67,18 +102,20 @@ export default function App() {
   const messages = selectedChatId ? (chatMessages[selectedChatId] || []) : []
 
   return (
-    <div className="fixed inset-0 w-full h-full">
+    <div className="relative w-screen h-screen overflow-hidden">
       {/* FRAUDLY button - top right, always visible */}
       <button
         type="button"
         onClick={handleToggle}
+        onMouseEnter={handleInteractiveEnter}
+        onMouseLeave={handleInteractiveLeave}
         style={{
           width: BUTTON_WIDTH,
           height: BUTTON_HEIGHT,
           backgroundColor: PINK,
           boxShadow: `0 4px 20px ${PINK_GLOW}`,
         }}
-        className="absolute top-4 right-4 text-sm font-semibold text-white border-0 rounded-xl cursor-pointer transition-transform hover:scale-105 active:scale-95 z-20"
+        className="overlay-interactive absolute top-10 right-10 text-sm font-semibold text-white border-0 rounded-xl cursor-pointer transition-transform hover:scale-105 active:scale-95 z-20"
         title={modalOpen ? 'Close' : 'Open'}
       >
         <CircularText
@@ -95,7 +132,9 @@ export default function App() {
           <button
             type="button"
             onClick={() => setIsListening((v) => !v)}
-            className={`absolute top-4 left-1/2 -translate-x-1/2 z-10 rounded-2xl border-2 cursor-pointer overflow-hidden
+            onMouseEnter={handleInteractiveEnter}
+            onMouseLeave={handleInteractiveLeave}
+            className={`overlay-interactive absolute top-4 left-1/2 -translate-x-1/2 z-10 rounded-2xl border-2 cursor-pointer overflow-hidden
               transition-all duration-300 ease-out
               hover:scale-[1.02] active:scale-[0.98]
               ${isListening
@@ -126,159 +165,165 @@ export default function App() {
             )}
           </button>
 
-          {/* History - left side */}
-          <div
-            className="absolute left-4 top-24 bottom-4 flex flex-col rounded-2xl border-2 overflow-hidden transition-[width] duration-200 z-10"
-            style={{
-              width: sidebarExpanded ? 220 : 56,
-              backgroundColor: BG_PANEL,
-              borderColor: BORDER_PINK,
-              boxShadow: `0 0 16px ${PINK_GLOW}`,
-            }}
-          >
+          <div className="absolute left-4 top-24 bottom-4 flex items-stretch gap-6 z-10">
+            {/* History - left side */}
             <div
-              className="flex items-center justify-between gap-2 px-2 py-2 border-b shrink-0"
+              onMouseEnter={handleInteractiveEnter}
+              onMouseLeave={handleInteractiveLeave}
+              className="overlay-interactive shrink-0 flex flex-col rounded-2xl border-2 overflow-hidden transition-[width] duration-200"
               style={{
-                backgroundColor: 'rgba(255, 90, 168, 0.08)',
-                borderColor: 'rgba(255, 90, 168, 0.3)',
-                color: PINK_LIGHT,
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => setSidebarExpanded((v) => !v)}
-                className="flex items-center justify-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:opacity-90 transition-opacity shrink-0"
-                style={{ color: PINK_LIGHT }}
-              >
-                <span className="text-sm font-medium">
-                  {sidebarExpanded ? '◀ History' : '▶'}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {}}
-                className="w-7 h-7 p-0 flex items-center justify-center rounded cursor-pointer hover:opacity-90 transition-opacity shrink-0"
-                style={{ color: PINK_LIGHT }}
-                title="No action"
-              >
-                ×
-              </button>
-            </div>
-            {sidebarExpanded && (
-              <div className="flex-1 overflow-y-auto p-2 space-y-1 min-h-0">
-                {placeholderHistory.map((chat) => (
-                  <button
-                    key={chat.id}
-                    type="button"
-                    onClick={() => setSelectedChatId((current) => (current === chat.id ? null : chat.id))}
-                    className={`w-full text-left px-3 py-2 rounded-lg cursor-pointer transition-colors border ${
-                      selectedChatId === chat.id
-                        ? 'border-pink-500/50'
-                        : 'border-transparent hover:border-pink-500/20'
-                    }`}
-                    style={{
-                      backgroundColor:
-                        selectedChatId === chat.id
-                          ? 'rgba(255, 90, 168, 0.12)'
-                          : 'transparent',
-                      color: selectedChatId === chat.id ? PINK_LIGHT : 'rgba(255,255,255,0.7)',
-                    }}
-                  >
-                    <div className="text-sm font-medium truncate">{chat.title}</div>
-                    <div className="text-xs opacity-70 truncate">{chat.preview}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Chat panel - center, below transcribe button */}
-          {selectedChatId && (
-            <div
-              className="absolute left-1/2 -translate-x-1/2 top-28 bottom-4 w-full max-w-md flex flex-col rounded-2xl border-2 overflow-hidden z-10"
-              style={{
+                width: sidebarExpanded ? 220 : 56,
                 backgroundColor: BG_PANEL,
                 borderColor: BORDER_PINK,
-                boxShadow: `0 0 24px ${PINK_GLOW}`,
+                boxShadow: `0 0 16px ${PINK_GLOW}`,
               }}
             >
               <div
-                className="flex items-center justify-end gap-2 px-4 py-3 shrink-0 border-b"
+                className="flex items-center justify-between gap-2 px-2 py-2 border-b shrink-0"
                 style={{
                   backgroundColor: 'rgba(255, 90, 168, 0.08)',
                   borderColor: 'rgba(255, 90, 168, 0.3)',
+                  color: PINK_LIGHT,
                 }}
               >
                 <button
                   type="button"
-                  onClick={() => setSelectedChatId(null)}
-                  className="w-8 h-8 p-0 text-xl leading-none rounded-lg cursor-pointer transition-colors border border-transparent hover:border-pink-500/50 shrink-0"
+                  onClick={() => setSidebarExpanded((v) => !v)}
+                  className="flex items-center justify-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:opacity-90 transition-opacity shrink-0"
                   style={{ color: PINK_LIGHT }}
-                  title="Close chat"
+                >
+                  <span className="text-sm font-medium">
+                    {sidebarExpanded ? '◀ History' : '▶'}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                    onClick={handleOverlayClose}
+                  className="w-7 h-7 p-0 flex items-center justify-center rounded cursor-pointer hover:opacity-90 transition-opacity shrink-0"
+                  style={{ color: PINK_LIGHT }}
+                    title="Close overlay"
                 >
                   ×
                 </button>
               </div>
-              <div
-                className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0"
-                style={{ backgroundColor: 'rgba(0,0,0,0.15)' }}
-              >
-                {messages.map((m) => (
-                  <div
-                    key={m.id}
-                    className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div
-                      className={`max-w-[85%] rounded-2xl px-4 py-2.5 border ${
-                        m.role === 'user' ? 'rounded-br-md' : 'rounded-bl-md'
+              {sidebarExpanded && (
+                <div className="flex-1 overflow-y-auto p-2 space-y-1 min-h-0">
+                  {placeholderHistory.map((chat) => (
+                    <button
+                      key={chat.id}
+                      type="button"
+                      onClick={() => setSelectedChatId((current) => (current === chat.id ? null : chat.id))}
+                      className={`w-full text-left px-3 py-2 rounded-lg cursor-pointer transition-colors border ${
+                        selectedChatId === chat.id
+                          ? 'border-pink-500/50'
+                          : 'border-transparent hover:border-pink-500/20'
                       }`}
                       style={{
                         backgroundColor:
-                          m.role === 'user'
-                            ? 'rgba(255, 90, 168, 0.2)'
-                            : 'rgba(255,255,255,0.06)',
-                        borderColor:
-                          m.role === 'user'
-                            ? 'rgba(255, 90, 168, 0.4)'
-                            : 'rgba(255,255,255,0.1)',
-                        color: '#e2e8f0',
+                          selectedChatId === chat.id
+                            ? 'rgba(255, 90, 168, 0.12)'
+                            : 'transparent',
+                        color: selectedChatId === chat.id ? PINK_LIGHT : 'rgba(255,255,255,0.7)',
                       }}
                     >
-                      <span className="text-sm">{m.text}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <form
-                onSubmit={handleSend}
-                className="p-4 border-t shrink-0"
+                      <div className="text-sm font-medium truncate">{chat.title}</div>
+                      <div className="text-xs opacity-70 truncate">{chat.preview}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Chat panel - beside history */}
+            {selectedChatId && (
+              <div
+                onMouseEnter={handleInteractiveEnter}
+                onMouseLeave={handleInteractiveLeave}
+                className="overlay-interactive ml-1 w-[28rem] shrink-0 flex flex-col rounded-2xl border-2 overflow-hidden"
                 style={{
-                  backgroundColor: 'rgba(255, 90, 168, 0.06)',
-                  borderColor: 'rgba(255, 90, 168, 0.25)',
+                  backgroundColor: BG_PANEL,
+                  borderColor: BORDER_PINK,
+                  boxShadow: `0 0 24px ${PINK_GLOW}`,
                 }}
               >
                 <div
-                  className="flex gap-2 rounded-xl border overflow-hidden"
-                  style={{ borderColor: 'rgba(255, 90, 168, 0.3)' }}
+                  className="flex items-center justify-end gap-2 px-4 py-3 shrink-0 border-b"
+                  style={{
+                    backgroundColor: 'rgba(255, 90, 168, 0.08)',
+                    borderColor: 'rgba(255, 90, 168, 0.3)',
+                  }}
                 >
-                  <input
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder="Type a message..."
-                    className="flex-1 min-w-0 px-4 py-3 text-sm text-white placeholder-zinc-500 bg-transparent border-0 outline-none"
-                  />
                   <button
-                    type="submit"
-                    className="px-4 py-3 text-sm font-medium text-white cursor-pointer transition-opacity hover:opacity-90"
-                    style={{ backgroundColor: PINK }}
+                    type="button"
+                    onClick={handleChatClose}
+                    className="w-8 h-8 p-0 text-xl leading-none rounded-lg cursor-pointer transition-colors border border-transparent hover:border-pink-500/50 shrink-0"
+                    style={{ color: PINK_LIGHT }}
+                    title="Close chat"
                   >
-                    Send
+                    ×
                   </button>
                 </div>
-              </form>
-            </div>
-          )}
+                <div
+                  className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0"
+                  style={{ backgroundColor: 'rgba(0,0,0,0.15)' }}
+                >
+                  {messages.map((m) => (
+                    <div
+                      key={m.id}
+                      className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div
+                        className={`max-w-[85%] rounded-2xl px-4 py-2.5 border ${
+                          m.role === 'user' ? 'rounded-br-md' : 'rounded-bl-md'
+                        }`}
+                        style={{
+                          backgroundColor:
+                            m.role === 'user'
+                              ? 'rgba(255, 90, 168, 0.2)'
+                              : 'rgba(255,255,255,0.06)',
+                          borderColor:
+                            m.role === 'user'
+                              ? 'rgba(255, 90, 168, 0.4)'
+                              : 'rgba(255,255,255,0.1)',
+                          color: '#e2e8f0',
+                        }}
+                      >
+                        <span className="text-sm">{m.text}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <form
+                  onSubmit={handleSend}
+                  className="p-4 border-t shrink-0"
+                  style={{
+                    backgroundColor: 'rgba(255, 90, 168, 0.06)',
+                    borderColor: 'rgba(255, 90, 168, 0.25)',
+                  }}
+                >
+                  <div
+                    className="flex gap-2 rounded-xl border overflow-hidden"
+                    style={{ borderColor: 'rgba(255, 90, 168, 0.3)' }}
+                  >
+                    <input
+                      type="text"
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      placeholder="Type a message..."
+                      className="flex-1 min-w-0 px-4 py-3 text-sm text-white placeholder-zinc-500 bg-transparent border-0 outline-none"
+                    />
+                    <button
+                      type="submit"
+                      className="px-4 py-3 text-sm font-medium text-white cursor-pointer transition-opacity hover:opacity-90"
+                      style={{ backgroundColor: PINK }}
+                    >
+                      Send
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>
