@@ -24,4 +24,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('main-panel:open', listener)
     return () => ipcRenderer.removeListener('main-panel:open', listener)
   },
+  onHotkeyRegistrationResult: (callback) => {
+    const listener = (_, payload) => callback(payload)
+    ipcRenderer.on('hotkey:registration-result', listener)
+    return () => ipcRenderer.removeListener('hotkey:registration-result', listener)
+  },
 })

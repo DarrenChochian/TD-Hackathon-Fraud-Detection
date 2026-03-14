@@ -115,6 +115,8 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [hotkey, setHotkey] = useState('Alt+K')
   const [mainPanelHotkey, setMainPanelHotkey] = useState('Alt+L')
+  const [mainPanelHotkeyFailed, setMainPanelHotkeyFailed] = useState(false)
+  const [settingsHotkeyFailed, setSettingsHotkeyFailed] = useState(false)
   const [runningByChat, setRunningByChat] = useState({})
   const interactiveHoverCountRef = useRef(0)
 
@@ -174,15 +176,14 @@ export default function App() {
   useEffect(() => {
     const unsubSettings = window.electronAPI?.onOpenSettings?.(() => {
       setSettingsOpen((v) => {
-        // When closing via hotkey, reset interactivity so the window goes back to click-through.
         if (v) resetOverlayInteractivity()
         return !v
       })
     })
     const unsubMainPanel = window.electronAPI?.onMainPanelOpen?.(() => {
+      console.log('[renderer] main-panel:open received')
       setModalOpen((prev) => {
         if (prev) {
-          // Closing — reset interactivity.
           setSelectedChatId(null)
           resetOverlayInteractivity()
         } else {
@@ -191,9 +192,21 @@ export default function App() {
         return !prev
       })
     })
+    const unsubRegistration = window.electronAPI?.onHotkeyRegistrationResult?.((result) => {
+      console.log('[renderer] hotkey:registration-result', result)
+      if (result?.settings) {
+        setHotkey(result.settings.accelerator)
+        setSettingsHotkeyFailed(!result.settings.ok)
+      }
+      if (result?.mainPanel) {
+        setMainPanelHotkey(result.mainPanel.accelerator)
+        setMainPanelHotkeyFailed(!result.mainPanel.ok)
+      }
+    })
     return () => {
       unsubSettings?.()
       unsubMainPanel?.()
+      unsubRegistration?.()
     }
   }, [])
 
@@ -710,8 +723,10 @@ export default function App() {
         <SettingsPanel
           currentHotkey={hotkey}
           onHotkeyChange={setHotkey}
+          settingsHotkeyFailed={settingsHotkeyFailed}
           mainPanelHotkey={mainPanelHotkey}
           onMainPanelHotkeyChange={setMainPanelHotkey}
+          mainPanelHotkeyFailed={mainPanelHotkeyFailed}
           onClose={() => { setSettingsOpen(false); resetOverlayInteractivity() }}
           onInteractiveEnter={handleInteractiveEnter}
           onInteractiveLeave={handleInteractiveLeave}

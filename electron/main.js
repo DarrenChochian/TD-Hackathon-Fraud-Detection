@@ -55,19 +55,63 @@ function createWindow() {
 let currentSettingsAccelerator = 'Alt+K'
 let currentMainPanelAccelerator = 'Alt+L'
 
+// On macOS, Option+L (Alt+L) is intercepted by some IME/keyboard configurations
+// before Electron can claim it. Provide a fallback chain specific to the platform.
+const MACOS_FALLBACKS = {
+  'Alt+L': ['Alt+Shift+L', 'Command+Shift+L'],
+}
+
+function tryRegister(accelerator, handler) {
+  const ok = globalShortcut.register(accelerator, handler)
+  console.log(`[hotkeys] register(${accelerator}) → ${ok ? 'OK' : 'FAILED'}`)
+  return ok
+}
+
+function tryRegisterWithFallbacks(accelerator, handler, fallbacks) {
+  if (tryRegister(accelerator, handler)) return { ok: true, registered: accelerator }
+  for (const fb of fallbacks) {
+    if (tryRegister(fb, handler)) return { ok: true, registered: fb }
+  }
+  console.warn(`[hotkeys] All candidates failed for desired accelerator: ${accelerator}`)
+  return { ok: false, registered: null }
+}
+
 function registerAllHotkeys() {
   globalShortcut.unregisterAll()
-  const settingsOk = globalShortcut.register(currentSettingsAccelerator, () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('settings:open')
-    }
-  })
-  const mainPanelOk = globalShortcut.register(currentMainPanelAccelerator, () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('main-panel:open')
-    }
-  })
-  return { settingsOk, mainPanelOk }
+
+  const settingsResult = tryRegisterWithFallbacks(
+    currentSettingsAccelerator,
+    () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('settings:open') },
+    [], // settings hotkey has no fallback — user must change it manually if it fails
+  )
+  if (settingsResult.ok) currentSettingsAccelerator = settingsResult.registered
+
+  const macFallbacks = process.platform === 'darwin'
+    ? (MACOS_FALLBACKS[currentMainPanelAccelerator] ?? ['Alt+Shift+L', 'Command+Shift+L'])
+    : []
+  const mainPanelResult = tryRegisterWithFallbacks(
+    currentMainPanelAccelerator,
+    () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('main-panel:open') },
+    macFallbacks,
+  )
+  if (mainPanelResult.ok) currentMainPanelAccelerator = mainPanelResult.registered
+
+  // Notify renderer of actual registered accelerators so the settings UI stays in sync.
+  const notify = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    mainWindow.webContents.send('hotkey:registration-result', {
+      settings: { accelerator: currentSettingsAccelerator, ok: settingsResult.ok },
+      mainPanel: { accelerator: currentMainPanelAccelerator, ok: mainPanelResult.ok },
+    })
+  }
+  // Defer one tick so the renderer's IPC listeners are set up before the message lands.
+  if (mainWindow?.webContents?.isLoading()) {
+    mainWindow.webContents.once('did-finish-load', notify)
+  } else {
+    setImmediate(notify)
+  }
+
+  return { settingsOk: settingsResult.ok, mainPanelOk: mainPanelResult.ok }
 }
 
 app.whenReady().then(() => {
