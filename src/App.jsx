@@ -13,11 +13,26 @@ function WaveformIcon({ className }) {
 const BUTTON_WIDTH = 64
 const BUTTON_HEIGHT = 64
 
-const PINK = '#ff5aa8'
 const PINK_LIGHT = '#ff8ec8'
-const PINK_GLOW = 'rgba(255, 90, 168, 0.25)'
-const BORDER_PINK = 'rgba(255, 90, 168, 0.4)'
-const BG_PANEL = 'rgba(10, 10, 12, 0.5)'
+const BORDER_PINK = 'rgba(255, 132, 198, 0.32)'
+const BG_PANEL = 'rgba(10, 12, 18, 0.82)'
+const GLASS_BACKDROP = 'blur(18px) saturate(150%)'
+const NEUTRAL_PANEL_FILL =
+  'radial-gradient(180% 140% at 45% -25%, rgba(82, 94, 122, 0.15) 0%, rgba(18, 22, 33, 0.9) 52%, rgba(7, 9, 15, 0.97) 100%)'
+const NEUTRAL_PANEL_HEADER =
+  'linear-gradient(180deg, rgba(98, 112, 143, 0.16), rgba(22, 27, 39, 0.84) 68%, rgba(9, 12, 19, 0.94))'
+const NEUTRAL_PANEL_SHADOW =
+  '0 0 0 1px rgba(116, 128, 158, 0.16), inset 0 -1.2px rgba(5, 7, 12, 0.92), inset 0 0.7px rgba(154, 167, 198, 0.2), 0 20px 44px rgba(0, 0, 0, 0.54), 0 8px 22px rgba(2, 4, 10, 0.56)'
+const NEUTRAL_CARD_FILL =
+  'radial-gradient(170% 130% at 46% -20%, rgba(124, 138, 172, 0.14) 0%, rgba(25, 30, 43, 0.82) 56%, rgba(8, 11, 17, 0.95) 100%)'
+const PINK_GLOSS_FILL =
+  'radial-gradient(179.05% 132.83% at 46.18% -23.44%, #ff9bd8 0%, #ff5aa8 35%, #bb2f7a 72%, #6b1b4a 100%)'
+const PINK_GLOSS_FILL_DARK =
+  'radial-gradient(170% 135% at 46% -24%, rgba(255, 176, 224, 0.34) 0%, rgba(155, 44, 109, 0.58) 42%, rgba(23, 9, 28, 0.92) 100%)'
+const PINK_GLOSS_SHADOW =
+  '0 0 0 0.7px rgba(255, 133, 199, 0.95), inset 0 -1.35px rgba(93, 10, 57, 0.9), inset 0 0.7px rgba(255, 205, 233, 0.8), 0 9px 28px rgba(134, 25, 90, 0.56), 0 30px 45px rgba(0, 0, 0, 0.28)'
+const USER_BUBBLE_FILL = PINK_GLOSS_FILL
+const USER_BUBBLE_SHADOW = PINK_GLOSS_SHADOW
 
 const CHAT_DEFINITIONS = [
   { id: '1', title: 'Chat 1' },
@@ -354,8 +369,9 @@ export default function App() {
         style={{
           width: BUTTON_WIDTH,
           height: BUTTON_HEIGHT,
-          backgroundColor: PINK,
-          boxShadow: `0 4px 20px ${PINK_GLOW}`,
+          background: PINK_GLOSS_FILL,
+          border: '1px solid rgba(255, 186, 226, 0.82)',
+          boxShadow: PINK_GLOSS_SHADOW,
         }}
         className="overlay-interactive absolute top-5 right-5 text-sm font-semibold text-white border-0 rounded-xl cursor-pointer transition-transform hover:scale-105 active:scale-95 z-20"
         title={modalOpen ? `Close (${mainPanelHotkey})` : `Open (${mainPanelHotkey})`}
@@ -371,10 +387,12 @@ export default function App() {
         onMouseLeave={handleInteractiveLeave}
         className="overlay-interactive absolute right-6 top-[90px] w-8 h-8 flex items-center justify-center rounded-lg border cursor-pointer transition-all hover:scale-110 active:scale-95 z-20"
         style={{
-          backgroundColor: settingsOpen ? 'rgba(255, 90, 168, 0.2)' : 'rgba(10, 10, 12, 0.5)',
-          borderColor: settingsOpen ? PINK : 'rgba(255, 90, 168, 0.4)',
-          color: PINK_LIGHT,
-          boxShadow: settingsOpen ? `0 0 10px ${PINK_GLOW}` : 'none',
+          background: settingsOpen ? PINK_GLOSS_FILL : NEUTRAL_CARD_FILL,
+          borderColor: settingsOpen ? 'rgba(255, 190, 229, 0.9)' : 'rgba(123, 136, 168, 0.3)',
+          color: settingsOpen ? '#ffe7f5' : 'rgba(224, 232, 255, 0.9)',
+          boxShadow: settingsOpen ? PINK_GLOSS_SHADOW : NEUTRAL_PANEL_SHADOW,
+          backdropFilter: GLASS_BACKDROP,
+          WebkitBackdropFilter: GLASS_BACKDROP,
         }}
         title={`Settings (${hotkey})`}
       >
@@ -392,9 +410,16 @@ export default function App() {
               transition-all duration-300 ease-out
               hover:scale-[1.02] active:scale-[0.98]
               ${isListening
-                ? 'flex flex-col items-center justify-center w-[200px] min-h-[72px] py-2 px-5 bg-[#ff5aa8] border-[#ff8ec8] shadow-[0_0_24px_rgba(255,90,168,0.5)] gap-1'
-                : 'flex flex-row items-center justify-center min-w-[160px] min-h-[48px] py-2.5 px-4 gap-3 bg-[#ff5aa8]/25 border-[#ff8ec8]/60'
+                ? 'flex flex-col items-center justify-center w-[200px] min-h-[72px] py-2 px-5 gap-1'
+                : 'flex flex-row items-center justify-center min-w-[160px] min-h-[48px] py-2.5 px-4 gap-3'
               }`}
+            style={{
+              background: isListening ? PINK_GLOSS_FILL : PINK_GLOSS_FILL_DARK,
+              borderColor: isListening ? 'rgba(255, 194, 231, 0.88)' : BORDER_PINK,
+              boxShadow: isListening ? PINK_GLOSS_SHADOW : '0 0 0 1px rgba(255, 122, 193, 0.28), inset 0 1px rgba(255, 198, 229, 0.24), 0 10px 24px rgba(68, 18, 48, 0.42)',
+              backdropFilter: GLASS_BACKDROP,
+              WebkitBackdropFilter: GLASS_BACKDROP,
+            }}
             title={isListening ? 'Stop listening' : 'Start listening'}
           >
             {isListening ? (
@@ -423,23 +448,26 @@ export default function App() {
               style={{
                 width: sidebarExpanded ? 220 : 56,
                 backgroundColor: BG_PANEL,
+                backgroundImage: NEUTRAL_PANEL_FILL,
                 borderColor: BORDER_PINK,
-                boxShadow: `0 0 16px ${PINK_GLOW}`,
+                boxShadow: NEUTRAL_PANEL_SHADOW,
+                backdropFilter: GLASS_BACKDROP,
+                WebkitBackdropFilter: GLASS_BACKDROP,
               }}
             >
               <div
                 className="flex items-center justify-between gap-2 px-2 py-2 border-b shrink-0"
                 style={{
-                  backgroundColor: 'rgba(255, 90, 168, 0.08)',
-                  borderColor: 'rgba(255, 90, 168, 0.3)',
-                  color: PINK_LIGHT,
+                  background: NEUTRAL_PANEL_HEADER,
+                  borderColor: 'rgba(124, 136, 168, 0.22)',
+                  color: 'rgba(228, 236, 255, 0.96)',
                 }}
               >
                 <button
                   type="button"
                   onClick={() => setSidebarExpanded((v) => !v)}
                   className="flex items-center justify-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:opacity-90 transition-opacity shrink-0"
-                  style={{ color: PINK_LIGHT }}
+                  style={{ color: 'rgba(228, 236, 255, 0.9)' }}
                 >
                   <span className="text-sm font-medium">{sidebarExpanded ? '◀ History' : '▶'}</span>
                 </button>
@@ -447,7 +475,7 @@ export default function App() {
                   type="button"
                   onClick={handleOverlayClose}
                   className="w-7 h-7 p-0 flex items-center justify-center rounded cursor-pointer hover:opacity-90 transition-opacity shrink-0"
-                  style={{ color: PINK_LIGHT }}
+                  style={{ color: 'rgba(228, 236, 255, 0.9)' }}
                   title="Close overlay"
                 >
                   ×
@@ -461,15 +489,21 @@ export default function App() {
                       key={chat.id}
                       type="button"
                       onClick={() => setSelectedChatId((current) => (current === chat.id ? null : chat.id))}
-                      className={`w-full text-left px-3 py-2 rounded-lg cursor-pointer transition-colors border ${
+                      className={`w-full text-left px-3 py-2 rounded-lg cursor-pointer transition-all border ${
                         selectedChatId === chat.id
                           ? 'border-pink-500/50'
                           : 'border-transparent hover:border-pink-500/20'
                       }`}
                       style={{
-                        backgroundColor:
-                          selectedChatId === chat.id ? 'rgba(255, 90, 168, 0.12)' : 'transparent',
-                        color: selectedChatId === chat.id ? PINK_LIGHT : 'rgba(255,255,255,0.7)',
+                        background:
+                          selectedChatId === chat.id
+                            ? 'radial-gradient(170% 130% at 45% -20%, rgba(255, 170, 223, 0.32) 0%, rgba(204, 52, 131, 0.8) 58%, rgba(91, 24, 63, 0.95) 100%)'
+                            : 'rgba(18, 22, 33, 0.82)',
+                        color: selectedChatId === chat.id ? '#ffe7f5' : 'rgba(226, 233, 255, 0.82)',
+                        boxShadow:
+                          selectedChatId === chat.id
+                            ? '0 0 0 1px rgba(255, 164, 218, 0.75), inset 0 1px rgba(255, 216, 237, 0.66), inset 0 -1px rgba(84, 16, 56, 0.85), 0 8px 18px rgba(108, 24, 74, 0.48)'
+                            : '0 0 0 1px rgba(121, 133, 165, 0.2), inset 0 1px rgba(164, 177, 208, 0.14)',
                       }}
                     >
                       <div className="text-sm font-medium truncate">{chat.title}</div>
@@ -487,29 +521,38 @@ export default function App() {
                 className="overlay-interactive ml-1 w-[28rem] shrink-0 flex flex-col rounded-2xl border-2 overflow-hidden"
                 style={{
                   backgroundColor: BG_PANEL,
+                  backgroundImage: NEUTRAL_PANEL_FILL,
                   borderColor: BORDER_PINK,
-                  boxShadow: `0 0 24px ${PINK_GLOW}`,
+                  boxShadow: NEUTRAL_PANEL_SHADOW,
+                  backdropFilter: GLASS_BACKDROP,
+                  WebkitBackdropFilter: GLASS_BACKDROP,
                 }}
               >
                 <div
                   className="flex items-center justify-end gap-2 px-4 py-3 shrink-0 border-b"
                   style={{
-                    backgroundColor: 'rgba(255, 90, 168, 0.08)',
-                    borderColor: 'rgba(255, 90, 168, 0.3)',
+                    background: NEUTRAL_PANEL_HEADER,
+                    borderColor: 'rgba(124, 136, 168, 0.22)',
                   }}
                 >
                   <button
                     type="button"
                     onClick={handleChatClose}
                     className="w-8 h-8 p-0 text-xl leading-none rounded-lg cursor-pointer transition-colors border border-transparent hover:border-pink-500/50 shrink-0"
-                    style={{ color: PINK_LIGHT }}
+                    style={{ color: 'rgba(228, 236, 255, 0.9)' }}
                     title="Close chat"
                   >
                     ×
                   </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0" style={{ backgroundColor: 'rgba(0,0,0,0.15)' }}>
+                <div
+                  className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0"
+                  style={{
+                    background:
+                      'linear-gradient(180deg, rgba(18, 23, 34, 0.84) 0%, rgba(8, 11, 18, 0.94) 100%)',
+                  }}
+                >
                   {messages.map((message) => {
                     if (message.type === 'progress') {
                       return (
@@ -517,9 +560,11 @@ export default function App() {
                           <div
                             className="max-w-[95%] rounded-lg px-3 py-2 border text-xs"
                             style={{
-                              backgroundColor: 'rgba(255,255,255,0.04)',
-                              borderColor: 'rgba(255,255,255,0.1)',
-                              color: 'rgba(226, 232, 240, 0.9)',
+                              background:
+                                'radial-gradient(140% 130% at 45% -10%, rgba(126, 140, 176, 0.18) 0%, rgba(29, 35, 50, 0.8) 100%)',
+                              borderColor: 'rgba(121, 134, 167, 0.3)',
+                              boxShadow: 'inset 0 1px rgba(159, 173, 205, 0.2)',
+                              color: 'rgba(228, 235, 255, 0.92)',
                             }}
                           >
                             {message.text}
@@ -536,14 +581,16 @@ export default function App() {
                             className="w-full max-w-[95%] rounded-xl border overflow-hidden"
                             style={{
                               borderColor: style.borderColor,
-                              backgroundColor: 'rgba(255,255,255,0.03)',
+                              background:
+                                'radial-gradient(150% 130% at 45% -20%, rgba(130, 144, 180, 0.17) 0%, rgba(31, 37, 53, 0.72) 55%, rgba(8, 11, 18, 0.94) 100%)',
+                              boxShadow: 'inset 0 1px rgba(158, 172, 205, 0.18)',
                             }}
                           >
                             <button
                               type="button"
                               onClick={() => toggleToolCard(selectedChatId, message.id)}
                               className="w-full px-3 py-2 text-left flex items-start gap-2 cursor-pointer"
-                              style={{ color: '#e2e8f0' }}
+                              style={{ color: 'rgba(228, 235, 255, 0.94)' }}
                             >
                               <span className="text-xs mt-0.5" style={{ color: style.textColor }}>
                                 {message.expanded ? '▾' : '▸'}
@@ -570,7 +617,7 @@ export default function App() {
                                 className="px-3 py-2 border-t text-xs whitespace-pre-wrap"
                                 style={{
                                   borderColor: 'rgba(255,255,255,0.08)',
-                                  color: 'rgba(226, 232, 240, 0.92)',
+                                  color: 'rgba(224, 233, 255, 0.95)',
                                 }}
                               >
                                 {message.error || message.outputPreview || 'No output preview'}
@@ -587,18 +634,28 @@ export default function App() {
                         className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                       >
                         <div
-                          className={`max-w-[85%] rounded-2xl px-4 py-2.5 border ${
-                            message.role === 'user' ? 'rounded-br-md' : 'rounded-bl-md'
+                          className={`max-w-[85%] rounded-2xl border ${
+                            message.role === 'user'
+                              ? 'relative origin-top-right overflow-hidden rounded-br-md px-3 py-1'
+                              : 'rounded-bl-md px-4 py-2.5'
                           }`}
                           style={{
-                            backgroundColor:
-                              message.role === 'user' ? 'rgba(255, 90, 168, 0.2)' : 'rgba(255,255,255,0.06)',
+                            background:
+                              message.role === 'user'
+                                ? USER_BUBBLE_FILL
+                                : 'radial-gradient(160% 130% at 40% -20%, rgba(122, 137, 173, 0.18) 0%, rgba(30, 36, 51, 0.72) 52%, rgba(8, 11, 18, 0.94) 100%)',
                             borderColor:
-                              message.role === 'user' ? 'rgba(255, 90, 168, 0.4)' : 'rgba(255,255,255,0.1)',
-                            color: '#e2e8f0',
+                              message.role === 'user' ? 'rgba(255, 186, 226, 0.95)' : 'rgba(122, 136, 170, 0.26)',
+                            boxShadow:
+                              message.role === 'user'
+                                ? USER_BUBBLE_SHADOW
+                                : '0 0 0 1px rgba(121, 134, 166, 0.18), inset 0 1px rgba(158, 172, 205, 0.18)',
+                            color: message.role === 'user' ? '#ffe8f7' : 'rgba(226, 233, 255, 0.95)',
                           }}
                         >
-                          <span className="text-sm whitespace-pre-wrap">{message.text}</span>
+                          <span className={`whitespace-pre-wrap ${message.role === 'user' ? 'text-base lg:text-lg' : 'text-sm'}`}>
+                            {message.text}
+                          </span>
                         </div>
                       </div>
                     )
@@ -609,11 +666,19 @@ export default function App() {
                   onSubmit={handleSend}
                   className="p-4 border-t shrink-0"
                   style={{
-                    backgroundColor: 'rgba(255, 90, 168, 0.06)',
-                    borderColor: 'rgba(255, 90, 168, 0.25)',
+                    background:
+                      'linear-gradient(180deg, rgba(100, 113, 145, 0.16), rgba(10, 13, 21, 0.88) 76%)',
+                    borderColor: 'rgba(121, 134, 167, 0.26)',
                   }}
                 >
-                  <div className="flex gap-2 rounded-xl border overflow-hidden" style={{ borderColor: 'rgba(255, 90, 168, 0.3)' }}>
+                  <div
+                    className="flex gap-2 rounded-xl border overflow-hidden"
+                    style={{
+                      borderColor: 'rgba(122, 136, 170, 0.32)',
+                      background: 'rgba(11, 14, 23, 0.82)',
+                      boxShadow: 'inset 0 1px rgba(155, 169, 202, 0.2)',
+                    }}
+                  >
                     <input
                       type="text"
                       value={input}
@@ -626,7 +691,11 @@ export default function App() {
                       type="submit"
                       disabled={selectedChatIsRunning || !input.trim()}
                       className="px-4 py-3 text-sm font-medium text-white cursor-pointer transition-opacity hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
-                      style={{ backgroundColor: PINK }}
+                      style={{
+                        background: PINK_GLOSS_FILL,
+                        borderLeft: '1px solid rgba(255, 165, 218, 0.65)',
+                        boxShadow: 'inset 0 1px rgba(255, 208, 234, 0.66)',
+                      }}
                     >
                       {selectedChatIsRunning ? 'Running' : 'Send'}
                     </button>
