@@ -105,9 +105,10 @@ async function captureScreenshotWithDesktopCapturer(filePath) {
   const primaryDisplay = screen.getPrimaryDisplay()
   const wasVisible = mainWindow.isVisible()
   const previousOpacity = mainWindow.getOpacity()
+  const shouldHideOverlayDuringCapture = process.platform !== 'win32'
 
   try {
-    if (wasVisible) {
+    if (wasVisible && shouldHideOverlayDuringCapture) {
       mainWindow.setOpacity(0)
       mainWindow.setIgnoreMouseEvents(true, { forward: true })
       await delay(120)
@@ -140,7 +141,7 @@ async function captureScreenshotWithDesktopCapturer(filePath) {
       height: source.thumbnail.getSize().height,
     }
   } finally {
-    if (wasVisible) {
+    if (wasVisible && shouldHideOverlayDuringCapture) {
       mainWindow.setOpacity(previousOpacity)
       if (!mainWindow.isVisible()) {
         mainWindow.showInactive()
@@ -223,6 +224,9 @@ function createWindow() {
   })
 
   mainWindow.setAlwaysOnTop(true, 'floating')
+  if (process.platform === 'win32') {
+    mainWindow.setContentProtection(true)
+  }
   // Click-through by default; renderer will opt-in interactive regions.
   mainWindow.setIgnoreMouseEvents(true, { forward: true })
 
