@@ -37,7 +37,7 @@ function buildAccelerator(e) {
   return parts.length > 1 ? parts.join('+') : null
 }
 
-export default function SettingsPanel({ currentHotkey: propHotkey = 'Alt+K', onHotkeyChange, mainPanelHotkey: propMainPanelHotkey = 'Alt+L', onMainPanelHotkeyChange, onClose, onInteractiveEnter, onInteractiveLeave }) {
+export default function SettingsPanel({ currentHotkey: propHotkey = 'Alt+K', onHotkeyChange, settingsHotkeyFailed = false, mainPanelHotkey: propMainPanelHotkey = 'Alt+L', onMainPanelHotkeyChange, mainPanelHotkeyFailed = false, onClose, onInteractiveEnter, onInteractiveLeave }) {
   const [currentHotkey, setCurrentHotkey] = useState(propHotkey)
   const [mainPanelHotkey, setMainPanelHotkey] = useState(propMainPanelHotkey)
   const [recording, setRecording] = useState(false)
@@ -225,7 +225,11 @@ export default function SettingsPanel({ currentHotkey: propHotkey = 'Alt+K', onH
             </button>
           </div>
 
-          {/* Status feedback */}
+          {settingsHotkeyFailed && status === null && (
+            <p className="text-xs" style={{ color: '#f87171' }}>
+              Failed to register — this combo may be taken by the OS. Try a different one.
+            </p>
+          )}
           {status === 'saved' && (
             <p className="text-xs" style={{ color: '#4ade80' }}>
               Hotkey updated successfully.
@@ -236,7 +240,6 @@ export default function SettingsPanel({ currentHotkey: propHotkey = 'Alt+K', onH
               Could not register that hotkey. Try a different combo.
             </p>
           )}
-
           {recording && (
             <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
               ESC to cancel — requires at least one modifier key (Alt, Ctrl, Shift).
@@ -285,6 +288,16 @@ export default function SettingsPanel({ currentHotkey: propHotkey = 'Alt+K', onH
               {mainPanelRecording ? 'Cancel' : 'Change'}
             </button>
           </div>
+          {mainPanelHotkeyFailed && mainPanelStatus === null && (
+            <p className="text-xs" style={{ color: '#f87171' }}>
+              Failed to register — this combo may be taken by the OS. Try a different one.
+            </p>
+          )}
+          {!mainPanelHotkeyFailed && mainPanelStatus === null && mainPanelHotkey !== propMainPanelHotkey && (
+            <p className="text-xs" style={{ color: '#fbbf24' }}>
+              Auto-changed to {mainPanelHotkey} (original combo unavailable on this OS).
+            </p>
+          )}
           {mainPanelStatus === 'saved' && (
             <p className="text-xs" style={{ color: '#4ade80' }}>
               Hotkey updated successfully.
