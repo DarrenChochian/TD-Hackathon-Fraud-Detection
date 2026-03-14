@@ -115,7 +115,7 @@ export default function App() {
           backgroundColor: PINK,
           boxShadow: `0 4px 20px ${PINK_GLOW}`,
         }}
-        className="overlay-interactive absolute top-10 right-10 text-sm font-semibold text-white border-0 rounded-xl cursor-pointer transition-transform hover:scale-105 active:scale-95 z-20"
+        className="overlay-interactive absolute top-5 right-5 text-sm font-semibold text-white border-0 rounded-xl cursor-pointer transition-transform hover:scale-105 active:scale-95 z-20"
         title={modalOpen ? 'Close' : 'Open'}
       >
         <CircularText
