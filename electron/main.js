@@ -10,10 +10,10 @@ function createWindow() {
   const work = screen.getPrimaryDisplay().workArea
 
   mainWindow = new BrowserWindow({
-    x: work.x,
-    y: work.y,
-    width: work.width,
-    height: work.height,
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
@@ -32,6 +32,14 @@ function createWindow() {
   mainWindow.setAlwaysOnTop(true, 'floating')
   // Click-through by default; renderer will opt-in interactive regions.
   mainWindow.setIgnoreMouseEvents(true, { forward: true })
+
+  // Force display metrics recalculation (fixes Windows workArea/bounds caching issues)
+  mainWindow.once('ready-to-show', () => {
+    const { width, height, x, y } = screen.getPrimaryDisplay().bounds
+    if (width > 100 && height > 100) {
+      mainWindow.setBounds({ x, y, width, height })
+    }
+  })
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173')
