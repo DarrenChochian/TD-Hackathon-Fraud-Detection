@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 const BUTTON_WIDTH = 52
 const BUTTON_HEIGHT = 52

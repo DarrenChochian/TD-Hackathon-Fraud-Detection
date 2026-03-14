@@ -1,11 +1,13 @@
 const { app, BrowserWindow, screen, ipcMain } = require('electron')
 const path = require('path')
+const { registerResearchAgentIpc } = require('./research-agent/ipc')
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
 const PADDING = 10
 /** Modal size as decimal of screen (e.g. 0.8 = 80% of work area width and height) */
 const MODAL_SCREEN_PERCENT = 0.8
+let mainWindow
 
 /** Position a window of the given size at the top-right of the work area with padding. */
 function getButtonBounds(width, height) {
@@ -35,7 +37,7 @@ function createWindow() {
   const initialHeight = 52
   const bounds = getButtonBounds(initialWidth, initialHeight)
 
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     ...bounds,
     frame: false,
     transparent: true,
@@ -59,22 +61,33 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
-
-  ipcMain.handle('set-window-mode', (_, mode, width, height) => {
-    if (mainWindow.isDestroyed()) return
-    if (mode === 'modal') {
-      mainWindow.setBounds(getModalBounds())
-    } else {
-      const w = Number(width)
-      const h = Number(height)
-      if (Number.isFinite(w) && Number.isFinite(h)) {
-        mainWindow.setBounds(getButtonBounds(w, h))
-      }
-    }
-  })
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  registerResearchAgentIpc({
+    ipcMain,
+    projectRoot: app.getAppPath(),
+    userDataPath: app.getPath('userData'),
+  })
+
+  ipcMain.handle('set-window-mode', (_, mode, width, height) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    if (mode === 'modal') {
+      mainWindow.setBounds(getModalBounds())
+      return
+    }
+
+    const w = Number(width)
+    const h = Number(height)
+    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+      mainWindow.setBounds(getButtonBounds(w, h))
+    } else {
+      mainWindow.setBounds(getButtonBounds(52, 52))
+    }
+  })
+
+  createWindow()
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
