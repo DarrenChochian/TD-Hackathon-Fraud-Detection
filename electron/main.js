@@ -79,24 +79,37 @@ function tryRegisterWithFallbacks(accelerator, handler, fallbacks) {
 function registerAllHotkeys() {
   globalShortcut.unregisterAll()
 
+  // Helper to bring window to front and send IPC
+  const handleHotkey = (channel) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (process.platform === 'darwin') {
+        app.focus({ steal: true }) // Force focus on Mac
+      }
+      mainWindow.show()
+      mainWindow.focus()
+      mainWindow.setIgnoreMouseEvents(false)
+      mainWindow.webContents.send(channel)
+    }
+  }
+
   const settingsResult = tryRegisterWithFallbacks(
     currentSettingsAccelerator,
-    () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('settings:open') },
-    [], // settings hotkey has no fallback — user must change it manually if it fails
+    () => handleHotkey('settings:open'), // Uses the helper now
+    []
   )
   if (settingsResult.ok) currentSettingsAccelerator = settingsResult.registered
 
   const macFallbacks = process.platform === 'darwin'
     ? (MACOS_FALLBACKS[currentMainPanelAccelerator] ?? ['Alt+Shift+L', 'Command+Shift+L'])
     : []
+    
   const mainPanelResult = tryRegisterWithFallbacks(
     currentMainPanelAccelerator,
-    () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('main-panel:open') },
-    macFallbacks,
+    () => handleHotkey('main-panel:open'),
+    macFallbacks
   )
   if (mainPanelResult.ok) currentMainPanelAccelerator = mainPanelResult.registered
 
-  // Notify renderer of actual registered accelerators so the settings UI stays in sync.
   const notify = () => {
     if (!mainWindow || mainWindow.isDestroyed()) return
     mainWindow.webContents.send('hotkey:registration-result', {
@@ -104,7 +117,7 @@ function registerAllHotkeys() {
       mainPanel: { accelerator: currentMainPanelAccelerator, ok: mainPanelResult.ok },
     })
   }
-  // Defer one tick so the renderer's IPC listeners are set up before the message lands.
+
   if (mainWindow?.webContents?.isLoading()) {
     mainWindow.webContents.once('did-finish-load', notify)
   } else {
@@ -156,7 +169,6 @@ ipcMain.handle('main-panel:update-hotkey', (_, { accelerator }) => {
 ipcMain.on('overlay:set-interactive', (_, interactive) => {
   if (!mainWindow || mainWindow.isDestroyed()) return
   const enabled = Boolean(interactive)
-  // interactive=true => receive mouse; interactive=false => click-through.
   mainWindow.setIgnoreMouseEvents(!enabled, { forward: true })
 })
 
