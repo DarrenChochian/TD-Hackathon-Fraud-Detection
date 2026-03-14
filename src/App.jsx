@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import CircularText from './components/CircularText'
 import SettingsPanel from './components/SettingsPanel'
 
@@ -7,6 +9,39 @@ function WaveformIcon({ className }) {
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
       <path d="M4 14v-4h2v4H4zm4 2v-8h2v8H8zm4-4V6h2v6h-2zm4 2V4h2v8h-2zm4 4V2h2v14h-2z" />
     </svg>
+  )
+}
+
+function MarkdownMessage({ text, className = 'text-sm' }) {
+  return (
+    <div className={`${className} break-words`}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+          ul: ({ children }) => <ul className="mb-2 ml-5 list-disc last:mb-0">{children}</ul>,
+          ol: ({ children }) => <ol className="mb-2 ml-5 list-decimal last:mb-0">{children}</ol>,
+          li: ({ children }) => <li className="mb-1 last:mb-0">{children}</li>,
+          a: ({ href, children }) => (
+            <a href={href} target="_blank" rel="noreferrer" className="underline decoration-current break-all">
+              {children}
+            </a>
+          ),
+          pre: ({ children }) => <pre className="my-2 overflow-x-auto rounded-md bg-black/35 p-2">{children}</pre>,
+          code: ({ inline, children }) =>
+            inline ? (
+              <code className="rounded bg-black/30 px-1 py-0.5">{children}</code>
+            ) : (
+              <code className="text-xs">{children}</code>
+            ),
+          blockquote: ({ children }) => (
+            <blockquote className="my-2 border-l-2 border-white/30 pl-3 italic">{children}</blockquote>
+          ),
+        }}
+      >
+        {String(text ?? '')}
+      </ReactMarkdown>
+    </div>
   )
 }
 
@@ -222,6 +257,9 @@ export default function App() {
       if (!chatId) return
 
       if (payload.type === 'tool_call_started' || payload.type === 'tool_call_finished') {
+        const toolName = String(payload?.toolName || '').toLowerCase()
+        if (toolName === 'message' || toolName === 'summary') return
+
         setChatMessages((prev) => {
           const nextChatMessages = [...(prev[chatId] || [])]
           const messageId = toolEntryIdFromEvent(payload)
@@ -580,7 +618,7 @@ export default function App() {
                               color: 'rgba(228, 235, 255, 0.92)',
                             }}
                           >
-                            {message.text}
+                            <MarkdownMessage text={message.text} className="text-xs" />
                           </div>
                         </div>
                       )
@@ -666,9 +704,10 @@ export default function App() {
                             color: message.role === 'user' ? '#ffe8f7' : 'rgba(226, 233, 255, 0.95)',
                           }}
                         >
-                          <span className={`whitespace-pre-wrap ${message.role === 'user' ? 'text-base lg:text-lg' : 'text-sm'}`}>
-                            {message.text}
-                          </span>
+                          <MarkdownMessage
+                            text={message.text}
+                            className={message.role === 'user' ? 'text-base lg:text-lg' : 'text-sm'}
+                          />
                         </div>
                       </div>
                     )
