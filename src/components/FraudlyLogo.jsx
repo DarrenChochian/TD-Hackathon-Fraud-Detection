@@ -3,7 +3,7 @@ import CircularText from './art/CircularText'
 export default function FraudlyLogo({ onMouseEnter, onMouseLeave }) {
   return (
     <div
-      className="relative w-16 h-16 flex items-center justify-center"
+      className="relative w-10 h-10 flex items-center justify-center"
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
@@ -11,7 +11,7 @@ export default function FraudlyLogo({ onMouseEnter, onMouseLeave }) {
         text="FRAUDLY" 
         onHover="speedUp" 
         spinDuration={20} 
-        size="sm"
+        size="xs"
       />
     </div>
   )

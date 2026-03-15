@@ -39,7 +39,7 @@ export default function ChatPanel({
 
   return (
     <div 
-      className="overlay-interactive absolute top-[96px] left-1/2 -translate-x-1/2 z-10 pt-6 pb-4"
+      className="overlay-interactive absolute top-[56px] left-1/2 -translate-x-1/2 z-10 pt-6 pb-4"
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >

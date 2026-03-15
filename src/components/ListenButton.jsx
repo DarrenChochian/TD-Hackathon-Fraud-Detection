@@ -16,15 +16,15 @@ export default function ListenButton({ isListening, onClick, disabled, onMouseEn
       disabled={disabled}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      className="px-4 py-2 rounded-xl flex items-center gap-2 cursor-pointer transition-all hover:scale-105 active:scale-95 disabled:opacity-60"
+      className="px-3 py-1.5 rounded-xl flex items-center gap-1.5 cursor-pointer transition-all hover:scale-105 active:scale-95 disabled:opacity-60"
       style={{
         background: PINK_GLOSS_FILL,
         borderColor: 'rgba(255, 194, 231, 0.88)',
         boxShadow: PINK_GLOSS_SHADOW,
       }}
     >
-      <WaveformIcon className={`w-5 h-5 text-white ${isListening ? 'animate-pulse' : ''}`} />
-      <span className="text-sm font-medium text-white whitespace-nowrap">
+      <WaveformIcon className={`w-4 h-4 text-white ${isListening ? 'animate-pulse' : ''}`} />
+      <span className="text-xs font-medium text-white whitespace-nowrap">
         {disabled ? 'Connecting…' : isListening ? 'Listening…' : 'Start Listening'}
       </span>
     </button>

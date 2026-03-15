@@ -1,5 +1,3 @@
-import { PINK_GLOSS_FILL, PINK_GLOSS_SHADOW, NEUTRAL_CARD_FILL } from '../utils/constants'
-
 export default function ChatIcon({ onClick, open, onMouseEnter, onMouseLeave }) {
   return (
     <button
@@ -7,19 +5,19 @@ export default function ChatIcon({ onClick, open, onMouseEnter, onMouseLeave }) 
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      className="w-12 h-12 rounded-xl flex items-center justify-center cursor-pointer transition-all hover:scale-110 active:scale-95"
+      className="w-12 h-12 rounded-full flex items-center justify-center gap-1 cursor-pointer transition-all hover:scale-110 active:scale-95 border"
       style={{
-        background: open ? PINK_GLOSS_FILL : NEUTRAL_CARD_FILL,
-        borderColor: open ? 'rgba(255, 190, 229, 0.9)' : 'rgba(123, 136, 168, 0.3)',
-        border: '1px solid',
-        boxShadow: open ? PINK_GLOSS_SHADOW : '0 0 0 1px rgba(121, 134, 166, 0.18), inset 0 1px rgba(158, 172, 205, 0.18)',
-        color: open ? '#ffe7f5' : 'rgba(224, 232, 255, 0.9)',
+        background: 'rgba(10, 12, 18, 0.65)',
+        backdropFilter: 'blur(24px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+        border: '1px solid rgba(255, 132, 198, 0.25)',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.37), inset 0 1px rgba(255, 255, 255, 0.1)',
       }}
       title={open ? 'Close chat' : 'Open chat'}
     >
-      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-      </svg>
+      <div className="w-1 h-1 rounded-full bg-white" />
+      <div className="w-1 h-1 rounded-full bg-white" />
+      <div className="w-1 h-1 rounded-full bg-white" />
     </button>
   )
 }
