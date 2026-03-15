@@ -19,7 +19,6 @@ export const PINK_GLOSS_SHADOW =
 export const USER_BUBBLE_FILL = PINK_GLOSS_FILL
 export const USER_BUBBLE_SHADOW = PINK_GLOSS_SHADOW
 
-export const SUSPICIOUS_SCAN_CHAT_ID = 'suspicious-scan'
 export const SHOW_TRANSCRIPTION_DEBUG = true
 export const AUDIO_CHUNK_MS = 250
 // Prioritize formats supported by Hive API: .mp3, .m4a, .wav

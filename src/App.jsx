@@ -11,7 +11,7 @@ import { useMediaCapture } from './hooks/useMediaCapture'
 import { useTranscription } from './hooks/useTranscription'
 import { useResearch } from './hooks/useResearch'
 import { useHiveDetection } from './hooks/useHiveDetection'
-import { SHOW_TRANSCRIPTION_DEBUG, SUSPICIOUS_SCAN_CHAT_ID } from './utils/constants'
+import { SHOW_TRANSCRIPTION_DEBUG } from './utils/constants'
 import { buildBackgroundMonitorPrompt, buildSuspiciousScanPrompt, truncate, previewForHistory } from './utils/chat'
 import {
   buildIncidentAlertTitle,
@@ -459,14 +459,17 @@ export default function App() {
   }
 
   const handleSuspiciousScanHotkey = async () => {
-    if (suspiciousScanInFlightRef.current || runningByChatRef.current[SUSPICIOUS_SCAN_CHAT_ID]) return
+    if (suspiciousScanInFlightRef.current) return
 
     suspiciousScanInFlightRef.current = true
-    setChatOpen(true)
-    await ensureChat(SUSPICIOUS_SCAN_CHAT_ID)
-    setSelectedChatId(SUSPICIOUS_SCAN_CHAT_ID)
 
     try {
+      const chat = await createAnalysisChat({ title: 'Suspicious scan' })
+      if (!chat?.id) return
+
+      setChatOpen(true)
+      setSelectedChatId(chat.id)
+
       const screenshotResult = await captureScreenshot()
       if (!screenshotResult?.ok) return
 
@@ -477,7 +480,7 @@ export default function App() {
       })
 
       await runResearchPrompt({
-        chatId: SUSPICIOUS_SCAN_CHAT_ID,
+        chatId: chat.id,
         text: prompt,
         displayText: 'Analyze this screenshot for scam risk and compare it with the company\'s official fraud/contact policies.',
         resetThread: true,
