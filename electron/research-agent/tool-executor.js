@@ -119,7 +119,7 @@ async function executeSingleToolCall(toolCall, context) {
       }
       return {
         tool_call_id: toolIds.toolCallId || toolIds.toolUseId,
-        tool_use_id: toolIds.toolUseId || toolIds.toolCallId,
+        tool_use_id: toolIds.toolUseId || '',
         output,
       }
     }
@@ -139,7 +139,7 @@ async function executeSingleToolCall(toolCall, context) {
       }
       return {
         tool_call_id: toolIds.toolCallId || toolIds.toolUseId,
-        tool_use_id: toolIds.toolUseId || toolIds.toolCallId,
+        tool_use_id: toolIds.toolUseId || '',
         output,
       }
     }
@@ -160,7 +160,7 @@ async function executeSingleToolCall(toolCall, context) {
       }
       return {
         tool_call_id: toolIds.toolCallId || toolIds.toolUseId,
-        tool_use_id: toolIds.toolUseId || toolIds.toolCallId,
+        tool_use_id: toolIds.toolUseId || '',
         output,
       }
     }
@@ -180,7 +180,7 @@ async function executeSingleToolCall(toolCall, context) {
       }
       return {
         tool_call_id: toolIds.toolCallId || toolIds.toolUseId,
-        tool_use_id: toolIds.toolUseId || toolIds.toolCallId,
+        tool_use_id: toolIds.toolUseId || '',
         output,
       }
     }
@@ -200,7 +200,7 @@ async function executeSingleToolCall(toolCall, context) {
 
     return {
       tool_call_id: toolIds.toolCallId || toolIds.toolUseId,
-      tool_use_id: toolIds.toolUseId || toolIds.toolCallId,
+      tool_use_id: toolIds.toolUseId || '',
       output: JSON.stringify({
         error: error instanceof Error ? error.message : 'Tool execution failed',
         tool: toolName,

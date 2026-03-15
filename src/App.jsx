@@ -553,20 +553,9 @@ export default function App() {
   }, [])
 
   const handleChatSend = async (text) => {
-    let prompt = text
-    let attachmentFilePaths = []
-
-    const screenshotResult = await captureScreenshot({ silent: true })
-    if (screenshotResult?.ok) {
-      attachmentFilePaths = [screenshotResult.filePath]
-      prompt = `${text}\n\nA fresh screenshot is attached for current on-screen context. Use it when answering this follow-up.`
-    }
-
     await runResearchPrompt({
       chatId: selectedChatId,
-      text: prompt,
-      displayText: text,
-      attachmentFilePaths,
+      text,
     })
   }
 

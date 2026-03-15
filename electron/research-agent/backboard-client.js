@@ -4,15 +4,12 @@ const path = require('path')
 function toSnakeCaseToolOutputs(toolOutputs) {
   return toolOutputs.map((item) => {
     const normalized = {
+      tool_call_id: item.tool_call_id || item.toolCallId || item.tool_use_id || item.toolUseId || item.id || '',
       output: item.output,
     }
 
-    const toolCallId = item.tool_call_id || item.toolCallId || ''
     const toolUseId = item.tool_use_id || item.toolUseId || item.id || ''
 
-    if (toolCallId) {
-      normalized.tool_call_id = toolCallId
-    }
     if (toolUseId) {
       normalized.tool_use_id = toolUseId
     }

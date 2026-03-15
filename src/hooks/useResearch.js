@@ -1,6 +1,36 @@
 import { useState, useEffect, useRef } from 'react'
 import { createMessageId, toolEntryIdFromEvent, initialMessagesForChat } from '../utils/chat'
 
+function looksLikeEventLegitimacyQuestion(text) {
+  const value = String(text || '').trim().toLowerCase()
+  if (!value) return false
+  const hasLegitimacyIntent =
+    /\b(legit|legitimate|real|scam|safe|trustworthy)\b/.test(value) ||
+    /^\s*is\b/.test(value)
+  const hasEventTerm = /\b(hackathon|event|conference|summit|competition)\b/.test(value)
+  return hasLegitimacyIntent && hasEventTerm
+}
+
+function augmentResearchPrompt(text) {
+  const prompt = String(text || '').trim()
+  if (!prompt) return prompt
+
+  if (looksLikeEventLegitimacyQuestion(prompt)) {
+    return [
+      prompt,
+      '',
+      'Research requirements for this question:',
+      '- Use websearch first with the exact event or hackathon name from the user message.',
+      '- Then webfetch at least one likely official or reputable result page if available.',
+      '- Do not ask the user for the URL or organizer until after those search attempts fail.',
+      '- If reputable sources show the event is real, say so clearly and summarize the evidence.',
+      '- Include source links in the answer.',
+    ].join('\n')
+  }
+
+  return prompt
+}
+
 function historyEntriesToMessages(chatId, history) {
   if (!Array.isArray(history) || history.length === 0) {
     return initialMessagesForChat(chatId)
@@ -217,7 +247,7 @@ export function useResearch() {
 
   const runResearchPrompt = async ({ chatId, text, displayText = '', resetThread = false, replaceChatMessages = false, attachmentFilePaths = [] }) => {
     const normalizedChatId = String(chatId || '').trim()
-    const prompt = String(text || '').trim()
+    const prompt = augmentResearchPrompt(text)
     const visiblePrompt = String(displayText || text || '').trim()
     if (!normalizedChatId || !prompt || runningByChatRef.current[normalizedChatId]) return false
 

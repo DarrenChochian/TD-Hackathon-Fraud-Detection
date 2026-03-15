@@ -3,7 +3,7 @@ const RESEARCH_TOOLS = [
     type: 'function',
     function: {
       name: 'websearch',
-      description: 'Run web search using Jina AI for one or more research queries about legitimacy, fraud risk, policies, reputation, or other relevant context.',
+      description: 'Run web search using Jina AI for one or more research queries about legitimacy, fraud risk, policies, reputation, events, hackathons, companies, or other relevant context. For named event or hackathon legitimacy questions, this is the required first tool call before asking the user for more context.',
       parameters: {
         type: 'object',
         properties: {
@@ -26,7 +26,7 @@ const RESEARCH_TOOLS = [
     type: 'function',
     function: {
       name: 'webfetch',
-      description: 'Fetch and return markdown content for a URL using Jina AI.',
+      description: 'Fetch and return markdown content for a URL using Jina AI. After using websearch for named event or hackathon legitimacy questions, fetch the most relevant official or reputable result pages. For named-company scam analysis, fetch official company security, fraud, policy, or terms pages before summarizing when available.',
       parameters: {
         type: 'object',
         properties: {

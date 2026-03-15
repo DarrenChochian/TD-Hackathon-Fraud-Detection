@@ -35,6 +35,58 @@ function sanitizeSummary(summary) {
   return text
 }
 
+function hasPendingToolCalls(normalizedResponse) {
+  if (!normalizedResponse || !Array.isArray(normalizedResponse.toolCalls)) return false
+  return normalizedResponse.toolCalls.length > 0
+}
+
+function looksLikeEventLegitimacyPrompt(prompt) {
+  const text = String(prompt || '').trim().toLowerCase()
+  if (!text) return false
+
+  const hasEventWord = /\b(hackathon|event|conference|summit|competition)\b/.test(text)
+  const hasLegitimacyWord = /\b(legit|legitimate|real|safe|trustworthy|scam)\b/.test(text) || /^\s*is\b/.test(text)
+  return hasEventWord && hasLegitimacyWord
+}
+
+function extractEventName(prompt) {
+  const firstLine = String(prompt || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .find(Boolean) || ''
+
+  if (!firstLine) return ''
+
+  return firstLine
+    .replace(/^\s*is\s+/i, '')
+    .replace(/\b(a|an)\s+(legit|legitimate|real|safe|trustworthy)\s+(hackathon|event|conference|summit|competition)\b\??/i, '')
+    .replace(/\b(legit|legitimate|real|safe|trustworthy)\s+(hackathon|event|conference|summit|competition)\b\??/i, '')
+    .replace(/\?+$/, '')
+    .trim()
+}
+
+function extractUrlsFromMarkdown(markdown) {
+  const text = String(markdown || '')
+  const matches = text.match(/https?:\/\/[^\s)\]]+/g) || []
+  return Array.from(new Set(matches.map((url) => url.replace(/[.,]+$/, ''))))
+}
+
+function rankResearchUrl(url, eventName) {
+  const lowerUrl = String(url || '').toLowerCase()
+  const lowerName = String(eventName || '').toLowerCase()
+  let score = 0
+
+  if (lowerUrl.includes('devpost.com')) score += 10
+  if (lowerUrl.includes('mlh.io')) score += 8
+  if (lowerUrl.includes('university') || lowerUrl.includes('.edu')) score += 6
+  if (lowerUrl.includes('hackathon')) score += 5
+
+  const compactName = lowerName.replace(/[^a-z0-9]+/g, '')
+  if (compactName && lowerUrl.replace(/[^a-z0-9]+/g, '').includes(compactName)) score += 12
+
+  return score
+}
+
 function createResearchLoop({ config, backboardClient, jinaClient, sessionStore, projectRoot, userDataPath }) {
   const systemPromptPath = path.join(projectRoot, 'electron', 'research-agent', 'system-prompt.md')
   let assistantPromise = null
@@ -246,10 +298,44 @@ function createResearchLoop({ config, backboardClient, jinaClient, sessionStore,
   }
 
   async function runToolEnabledConversation({ chatId, prompt, onEvent, attachmentFilePaths = [] }) {
+    async function recoverFromToolResultMismatch({ attempt, maxRecoveryAttempts, retryMessage, onSummary }) {
+      onEvent({
+        type: 'progress',
+        message: `Tool-result mismatch detected (attempt ${attempt}/${maxRecoveryAttempts}). Sending keep alive and continuing...`,
+      })
+
+      let keepAliveResponse
+      try {
+        keepAliveResponse = backboardClient.normalizeMessageResponse(
+          await backboardClient.addMessage({
+            threadId: session.threadId,
+            content: 'keep alive',
+            llmProvider: config.backboardProvider,
+            modelName: config.backboardModel,
+            attachmentFilePaths: [],
+          }),
+        )
+      } catch (keepAliveError) {
+        throw keepAliveError
+      }
+
+      await resolveRequiredActions({
+        initialResponse: keepAliveResponse,
+        onSummary: onSummary || (() => {}),
+      })
+
+      onEvent({
+        type: 'progress',
+        message: retryMessage,
+      })
+    }
+
     async function resolveRequiredActions({ initialResponse, onSummary }) {
       let normalized = initialResponse
+      let attempt = 0
+      const maxRecoveryAttempts = 3
 
-      while (normalized.status === 'REQUIRES_ACTION' && normalized.toolCalls.length > 0) {
+      while (hasPendingToolCalls(normalized)) {
         onEvent({
           type: 'progress',
           message: `Executing ${normalized.toolCalls.length} tool call(s)...`,
@@ -262,13 +348,39 @@ function createResearchLoop({ config, backboardClient, jinaClient, sessionStore,
           onToolLifecycle: onEvent,
         })
 
-        normalized = backboardClient.normalizeMessageResponse(
-          await backboardClient.submitToolOutputs({
-            threadId: session.threadId,
-            runId: normalized.runId,
-            toolOutputs,
-          }),
-        )
+        try {
+          normalized = backboardClient.normalizeMessageResponse(
+            await backboardClient.submitToolOutputs({
+              threadId: session.threadId,
+              runId: normalized.runId,
+              toolOutputs,
+            }),
+          )
+          attempt = 0
+        } catch (error) {
+          if (!isToolResultMismatchError(error) || attempt >= maxRecoveryAttempts) {
+            throw error
+          }
+
+          attempt += 1
+          try {
+            await recoverFromToolResultMismatch({
+              attempt,
+              maxRecoveryAttempts,
+              retryMessage: 'Keep alive processed. Retrying tool output submission...',
+              onSummary: () => {},
+            })
+          } catch (keepAliveError) {
+            if (isToolResultMismatchError(keepAliveError) && attempt < maxRecoveryAttempts) {
+              onEvent({
+                type: 'progress',
+                message: 'Keep alive hit the same mismatch. Retrying recovery...',
+              })
+              continue
+            }
+            throw keepAliveError
+          }
+        }
       }
 
       return normalized
@@ -295,22 +407,13 @@ function createResearchLoop({ config, backboardClient, jinaClient, sessionStore,
           }
 
           attempt += 1
-          onEvent({
-            type: 'progress',
-            message: `Tool-result mismatch detected (attempt ${attempt}/${maxRecoveryAttempts}). Sending keep alive and continuing...`,
-          })
-
-          let keepAliveResponse
           try {
-            keepAliveResponse = backboardClient.normalizeMessageResponse(
-              await backboardClient.addMessage({
-                threadId: session.threadId,
-                content: 'keep alive',
-                llmProvider: config.backboardProvider,
-                modelName: config.backboardModel,
-                attachmentFilePaths: [],
-              }),
-            )
+            await recoverFromToolResultMismatch({
+              attempt,
+              maxRecoveryAttempts,
+              retryMessage: 'Keep alive processed. Retrying original prompt...',
+              onSummary: () => {},
+            })
           } catch (keepAliveError) {
             if (isToolResultMismatchError(keepAliveError) && attempt < maxRecoveryAttempts) {
               onEvent({
@@ -322,15 +425,6 @@ function createResearchLoop({ config, backboardClient, jinaClient, sessionStore,
             throw keepAliveError
           }
 
-          await resolveRequiredActions({
-            initialResponse: keepAliveResponse,
-            onSummary: () => {},
-          })
-
-          onEvent({
-            type: 'progress',
-            message: 'Keep alive processed. Retrying original prompt...',
-          })
         }
       }
     }
@@ -387,6 +481,55 @@ function createResearchLoop({ config, backboardClient, jinaClient, sessionStore,
     const runPromise = (async () => {
       let finalPrompt = prompt
       const shouldInlineAttachmentContext = config.backboardProvider === 'anthropic' && attachmentFilePaths.length > 0
+
+      if (looksLikeEventLegitimacyPrompt(finalPrompt)) {
+        const eventName = extractEventName(finalPrompt)
+        if (eventName) {
+          onEvent({ type: 'progress', message: `Pre-researching live sources for ${eventName}...` })
+
+          const queries = [
+            `"${eventName}" hackathon`,
+            `${eventName} hackathon official`,
+            `site:devpost.com "${eventName}"`,
+          ]
+
+          const searchResults = await Promise.allSettled(queries.map((query) => jinaClient.websearch(query)))
+          const successfulSearches = searchResults
+            .filter((result) => result.status === 'fulfilled')
+            .map((result) => result.value)
+
+          const candidateUrls = successfulSearches
+            .flatMap((result) => extractUrlsFromMarkdown(result.markdown))
+            .filter((url) => /^https?:\/\//i.test(url))
+            .sort((left, right) => rankResearchUrl(right, eventName) - rankResearchUrl(left, eventName))
+
+          const topUrls = Array.from(new Set(candidateUrls)).slice(0, 3)
+          const fetchResults = await Promise.allSettled(topUrls.map((url) => jinaClient.webfetch(url)))
+          const successfulFetches = fetchResults
+            .filter((result) => result.status === 'fulfilled')
+            .map((result) => result.value)
+
+          const searchContextBlocks = []
+
+          if (successfulSearches.length > 0) {
+            searchContextBlocks.push(
+              'Live search context gathered automatically:',
+              ...successfulSearches.map((result) => `Search query: ${result.query}\n${result.markdown}`),
+            )
+          }
+
+          if (successfulFetches.length > 0) {
+            searchContextBlocks.push(
+              'Fetched pages gathered automatically:',
+              ...successfulFetches.map((result) => `Fetched URL: ${result.url}\n${result.markdown}`),
+            )
+          }
+
+          if (searchContextBlocks.length > 0) {
+            finalPrompt = `${finalPrompt}\n\n${searchContextBlocks.join('\n\n')}`
+          }
+        }
+      }
 
       if (shouldInlineAttachmentContext) {
         const attachmentContext = await buildAttachmentContext({
