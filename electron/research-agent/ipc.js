@@ -4,8 +4,10 @@ const { createBackboardClient } = require('./backboard-client')
 const { createJinaClient } = require('./jina-client')
 const { createSessionStore } = require('./session-store')
 const { createResearchLoop } = require('./research-loop')
+const { createChatHistoryStore } = require('./chat-history-store')
 
 function registerResearchAgentIpc({ ipcMain, projectRoot, userDataPath }) {
+  const chatHistoryStore = createChatHistoryStore({ projectRoot })
   let services = null
 
   function getServices() {
@@ -33,6 +35,12 @@ function registerResearchAgentIpc({ ipcMain, projectRoot, userDataPath }) {
 
     return services
   }
+
+  ipcMain.handle('research:get-history', async (_, payload) => {
+    const chatId = String(payload?.chatId || '').trim()
+    if (!chatId) return []
+    return chatHistoryStore.load(chatId)
+  })
 
   ipcMain.handle('research:initialize-chats', async (_, payload) => {
     const chatIds = Array.isArray(payload?.chatIds) ? payload.chatIds : []
@@ -85,6 +93,7 @@ function registerResearchAgentIpc({ ipcMain, projectRoot, userDataPath }) {
         attachmentFilePaths,
       })
 
+      chatHistoryStore.append({ chatId, prompt, response: result.summary })
       sendEvent({ type: 'completed', message: 'Research completed.', summary: result.summary })
       return result
     } catch (error) {

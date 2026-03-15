@@ -15,6 +15,38 @@ export function useResearch() {
     window.electronAPI
       ?.initializeResearchChats?.(CHAT_IDS)
       .catch((error) => console.error('Failed to initialize research chats:', error))
+
+    if (!window.electronAPI?.getChatHistory) return
+
+    Promise.all(
+      CHAT_DEFINITIONS.map(async (chat) => {
+        const history = await window.electronAPI.getChatHistory(chat.id).catch(() => [])
+        return { chatId: chat.id, history }
+      })
+    ).then((results) => {
+      setChatMessages((prev) => {
+        const next = { ...prev }
+        for (const { chatId, history } of results) {
+          if (!history.length) continue
+          const historicMessages = history.flatMap((entry, i) => [
+            {
+              id: `history-${chatId}-${i}-user`,
+              type: 'text',
+              role: 'user',
+              text: entry.prompt,
+            },
+            {
+              id: `history-${chatId}-${i}-assistant`,
+              type: 'text',
+              role: 'assistant',
+              text: entry.response,
+            },
+          ])
+          next[chatId] = [...historicMessages, ...prev[chatId]]
+        }
+        return next
+      })
+    })
   }, [])
 
   const appendMessage = (chatId, message) => {
