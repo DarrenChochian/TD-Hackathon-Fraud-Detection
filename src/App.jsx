@@ -11,7 +11,7 @@ import { useMediaCapture } from './hooks/useMediaCapture'
 import { useTranscription } from './hooks/useTranscription'
 import { useResearch } from './hooks/useResearch'
 import { useHiveDetection } from './hooks/useHiveDetection'
-import { SUSPICIOUS_SCAN_CHAT_ID } from './utils/constants'
+import { SHOW_TRANSCRIPTION_DEBUG, SUSPICIOUS_SCAN_CHAT_ID } from './utils/constants'
 import { buildSuspiciousScanPrompt, truncate, previewForHistory } from './utils/chat'
 
 export default function App() {
@@ -305,22 +305,24 @@ export default function App() {
         onMouseLeave={handleInteractiveLeave}
       />
 
-      <TranscriptionDebug
-        transcriptionSessionState={transcriptionSessionState}
-        sourceStates={sourceStates}
-        sourceChunkCounts={sourceChunkCounts}
-        sourceAudioLevels={sourceAudioLevels}
-        latestTranscripts={latestTranscripts}
-        transcriptKinds={transcriptKinds}
-        lastTranscriptionActivityAt={lastTranscriptionActivityAt}
-        screenshotStatus={screenshotStatus}
-        lastScreenshotAt={lastScreenshotAt}
-        transcriptionWarning={transcriptionWarning}
-        transcriptionError={transcriptionError}
-        isMac={isMac}
-        onMouseEnter={handleInteractiveEnter}
-        onMouseLeave={handleInteractiveLeave}
-      />
+      {SHOW_TRANSCRIPTION_DEBUG && (
+        <TranscriptionDebug
+          transcriptionSessionState={transcriptionSessionState}
+          sourceStates={sourceStates}
+          sourceChunkCounts={sourceChunkCounts}
+          sourceAudioLevels={sourceAudioLevels}
+          latestTranscripts={latestTranscripts}
+          transcriptKinds={transcriptKinds}
+          lastTranscriptionActivityAt={lastTranscriptionActivityAt}
+          screenshotStatus={screenshotStatus}
+          lastScreenshotAt={lastScreenshotAt}
+          transcriptionWarning={transcriptionWarning}
+          transcriptionError={transcriptionError}
+          isMac={isMac}
+          onMouseEnter={handleInteractiveEnter}
+          onMouseLeave={handleInteractiveLeave}
+        />
+      )}
 
       {settingsOpen && (
         <SettingsPanel
