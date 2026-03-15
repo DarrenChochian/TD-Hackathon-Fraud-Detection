@@ -4,6 +4,7 @@ release
 *.local
 .DS_Store
 .env
+!.env.example
 *.log
 npm-debug.log*
 CLAUDE.md

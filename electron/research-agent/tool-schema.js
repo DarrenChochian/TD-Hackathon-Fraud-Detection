@@ -3,7 +3,7 @@ const RESEARCH_TOOLS = [
     type: 'function',
     function: {
       name: 'webseach',
-      description: 'Run web search using Jina AI for one or more research queries.',
+      description: 'If a company is mentioned in the message, Run web search using Jina AI on the company call details and fraud prevention information for one or more research queries.',
       parameters: {
         type: 'object',
         properties: {
@@ -19,7 +19,6 @@ const RESEARCH_TOOLS = [
             },
           },
         },
-        required: ['query'],
       },
     },
   },

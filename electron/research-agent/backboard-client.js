@@ -2,10 +2,23 @@ const fs = require('fs/promises')
 const path = require('path')
 
 function toSnakeCaseToolOutputs(toolOutputs) {
-  return toolOutputs.map((item) => ({
-    tool_call_id: item.tool_call_id || item.toolCallId,
-    output: item.output,
-  }))
+  return toolOutputs.map((item) => {
+    const normalized = {
+      output: item.output,
+    }
+
+    const toolCallId = item.tool_call_id || item.toolCallId || ''
+    const toolUseId = item.tool_use_id || item.toolUseId || item.id || ''
+
+    if (toolCallId) {
+      normalized.tool_call_id = toolCallId
+    }
+    if (toolUseId) {
+      normalized.tool_use_id = toolUseId
+    }
+
+    return normalized
+  })
 }
 
 function normalizeToolCalls(toolCalls) {
