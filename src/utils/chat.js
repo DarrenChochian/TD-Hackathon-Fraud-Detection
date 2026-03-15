@@ -63,6 +63,44 @@ export function buildSuspiciousScanPrompt({ screenshotResult, callerTranscript, 
   ].join('\n')
 }
 
+export function buildFollowUpPrompt({ userText, priorMessages, maxMessages = 6 }) {
+  const prompt = String(userText || '').trim()
+  if (!prompt) return ''
+
+  const history = Array.isArray(priorMessages)
+    ? priorMessages
+        .filter((message) => message?.type === 'text' && (message?.role === 'user' || message?.role === 'assistant'))
+        .slice(-maxMessages)
+    : []
+
+  if (history.length === 0) {
+    return prompt
+  }
+
+  const conversationContext = history
+    .map((message) => {
+      const role = message.role === 'user' ? 'User' : 'Assistant'
+      const content = String(message.contextText || message.text || '').trim()
+      return content ? `${role}: ${content}` : ''
+    })
+    .filter(Boolean)
+    .join('\n\n')
+
+  if (!conversationContext) {
+    return prompt
+  }
+
+  return [
+    'Continue this same conversation using the prior evidence and conclusions unless the user clearly changes topics.',
+    'If the user asks a follow-up like "explain more", answer based on the existing screenshot/transcript/company context already established in this thread.',
+    '',
+    'Recent conversation context:',
+    conversationContext,
+    '',
+    `Latest user follow-up: ${prompt}`,
+  ].join('\n')
+}
+
 function formatTranscriptWindowTimestamp(value) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''

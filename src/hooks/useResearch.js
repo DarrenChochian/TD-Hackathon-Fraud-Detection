@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { createMessageId, toolEntryIdFromEvent, initialMessagesForChat } from '../utils/chat'
+import { createMessageId, toolEntryIdFromEvent, initialMessagesForChat, buildFollowUpPrompt } from '../utils/chat'
 
 function looksLikeEventLegitimacyQuestion(text) {
   const value = String(text || '').trim().toLowerCase()
@@ -46,6 +46,7 @@ function historyEntriesToMessages(chatId, history) {
         type: 'text',
         role: 'user',
         text: entry.prompt,
+        contextText: entry.contextPrompt || entry.prompt,
       })
     }
 
@@ -247,7 +248,8 @@ export function useResearch() {
 
   const runResearchPrompt = async ({ chatId, text, displayText = '', resetThread = false, replaceChatMessages = false, attachmentFilePaths = [] }) => {
     const normalizedChatId = String(chatId || '').trim()
-    const prompt = augmentResearchPrompt(text)
+    const priorMessages = replaceChatMessages ? [] : (chatMessages[normalizedChatId] || [])
+    const prompt = augmentResearchPrompt(buildFollowUpPrompt({ userText: text, priorMessages }))
     const visiblePrompt = String(displayText || text || '').trim()
     if (!normalizedChatId || !prompt || runningByChatRef.current[normalizedChatId]) return false
 
@@ -292,6 +294,8 @@ export function useResearch() {
       const result = await window.electronAPI.runResearch({
         chatId: normalizedChatId,
         prompt,
+        displayPrompt: visiblePrompt,
+        contextPrompt: String(text || '').trim(),
         attachmentFilePaths,
       })
       return result

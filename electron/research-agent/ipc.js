@@ -192,7 +192,12 @@ function registerResearchAgentIpc({ ipcMain, projectRoot, userDataPath }) {
     }
 
     if (historyChatId) {
-      chatHistoryStore.startRun({ chatId: historyChatId, runId, prompt: displayPrompt })
+      chatHistoryStore.startRun({
+        chatId: historyChatId,
+        runId,
+        prompt: displayPrompt || prompt,
+        contextPrompt: prompt,
+      })
       sendEvent({ type: 'started', message: 'Background research started.' })
     }
 
@@ -217,7 +222,8 @@ function registerResearchAgentIpc({ ipcMain, projectRoot, userDataPath }) {
           timestamp: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           completedAt: new Date().toISOString(),
-          prompt: displayPrompt,
+          prompt: displayPrompt || prompt,
+          contextPrompt: prompt,
           response: result.summary,
           error: '',
           toolCalls: collectedToolCalls,
@@ -237,6 +243,8 @@ function registerResearchAgentIpc({ ipcMain, projectRoot, userDataPath }) {
   ipcMain.handle('research:run', async (event, payload) => {
     const prompt = payload?.prompt
     const chatId = String(payload?.chatId || '').trim()
+    const displayPrompt = String(payload?.displayPrompt || '').trim()
+    const contextPrompt = String(payload?.contextPrompt || '').trim()
     const attachmentFilePaths = Array.isArray(payload?.attachmentFilePaths)
       ? payload.attachmentFilePaths.map((value) => String(value || '').trim()).filter(Boolean)
       : []
@@ -272,7 +280,12 @@ function registerResearchAgentIpc({ ipcMain, projectRoot, userDataPath }) {
     }
 
     sendEvent({ type: 'started', message: 'Research started.' })
-    chatHistoryStore.startRun({ chatId, runId, prompt })
+    chatHistoryStore.startRun({
+      chatId,
+      runId,
+      prompt: displayPrompt || prompt,
+      contextPrompt: contextPrompt || prompt,
+    })
 
     try {
       const result = await getServices().researchLoop.run({

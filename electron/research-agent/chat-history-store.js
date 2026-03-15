@@ -159,7 +159,7 @@ function createChatHistoryStore({ projectRoot }) {
     return describeChat(chatId)
   }
 
-  function startRun({ chatId, runId, prompt }) {
+  function startRun({ chatId, runId, prompt, contextPrompt }) {
     ensureChat(chatId)
     const history = load(chatId)
     const timestamp = new Date().toISOString()
@@ -169,6 +169,7 @@ function createChatHistoryStore({ projectRoot }) {
       updatedAt: timestamp,
       runId,
       prompt: String(prompt || existing?.prompt || ''),
+      contextPrompt: String(contextPrompt || existing?.contextPrompt || prompt || ''),
       response: existing?.response || '',
       error: existing?.error || '',
       toolCalls: Array.isArray(existing?.toolCalls) ? existing.toolCalls : [],
@@ -201,6 +202,7 @@ function createChatHistoryStore({ projectRoot }) {
         updatedAt: timestamp,
         runId,
         prompt: String(existing?.prompt || ''),
+        contextPrompt: String(existing?.contextPrompt || existing?.prompt || ''),
         response: String(existing?.response || ''),
         error: String(existing?.error || ''),
         toolCalls,
@@ -221,6 +223,7 @@ function createChatHistoryStore({ projectRoot }) {
       completedAt: timestamp,
       runId,
       prompt: String(existing?.prompt || ''),
+      contextPrompt: String(existing?.contextPrompt || existing?.prompt || ''),
       response: String(response || ''),
       error: '',
       toolCalls: Array.isArray(existing?.toolCalls) ? existing.toolCalls : [],
@@ -240,6 +243,7 @@ function createChatHistoryStore({ projectRoot }) {
       completedAt: timestamp,
       runId,
       prompt: String(existing?.prompt || ''),
+      contextPrompt: String(existing?.contextPrompt || existing?.prompt || ''),
       response: String(existing?.response || ''),
       error: String(error || 'Research failed'),
       toolCalls: Array.isArray(existing?.toolCalls) ? existing.toolCalls : [],
@@ -271,6 +275,7 @@ function createChatHistoryStore({ projectRoot }) {
     history.push({
       timestamp: new Date().toISOString(),
       prompt,
+      contextPrompt: prompt,
       response,
     })
     save(chatId, history)
@@ -291,6 +296,7 @@ function createChatHistoryStore({ projectRoot }) {
       completedAt: String(run?.completedAt || existing?.completedAt || run?.updatedAt || new Date().toISOString()),
       runId: normalizedRunId,
       prompt: String(run?.prompt || existing?.prompt || ''),
+      contextPrompt: String(run?.contextPrompt || existing?.contextPrompt || run?.prompt || existing?.prompt || ''),
       response: String(run?.response || existing?.response || ''),
       error: String(run?.error || existing?.error || ''),
       toolCalls: Array.isArray(run?.toolCalls) ? run.toolCalls.map((toolCall) => normalizeToolCall(toolCall)) : (Array.isArray(existing?.toolCalls) ? existing.toolCalls : []),
