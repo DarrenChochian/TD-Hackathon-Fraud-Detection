@@ -24,6 +24,7 @@ function registerResearchAgentIpc({ ipcMain, projectRoot, userDataPath }) {
       jinaClient,
       sessionStore,
       projectRoot,
+      userDataPath,
     })
 
     services = {

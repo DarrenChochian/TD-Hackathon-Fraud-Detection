@@ -3,41 +3,9 @@ const path = require('path')
 const crypto = require('crypto')
 const { RESEARCH_TOOLS } = require('./tool-schema')
 const { executeToolCalls } = require('./tool-executor')
+const { buildAttachmentContext } = require('./attachment-context')
 
-const ATTACHMENT_SAFE_SYSTEM_PROMPT = [
-  'You are FRAUDLY, a scam prevention agent.',
-  'Analyze the user request and any attached files/images using the attachments as primary evidence.',
-  'Do not call tools or rely on external web research in this mode.',
-  'Return concise markdown that directly answers the user request.',
-  'If the user asks for specific fields or sections, follow that exact format.',
-].join('\n')
-
-function buildAttachmentEvidenceMessage(summary) {
-  const normalizedSummary = String(summary || '').trim()
-  if (!normalizedSummary) return ''
-
-  return [
-    'Attachment analysis evidence:',
-    normalizedSummary,
-    '',
-    'Use the attachment analysis above as primary evidence for your answer.',
-    'You may use tools for additional verification or follow-up research if helpful.',
-  ].join('\n')
-}
-
-function buildAttachmentContextSeed({ originalPrompt, summary }) {
-  const evidenceMessage = buildAttachmentEvidenceMessage(summary)
-  return [
-    'Context from a prior attachment-based analysis.',
-    '',
-    'Original user request:',
-    String(originalPrompt || '').trim(),
-    '',
-    evidenceMessage,
-  ].join('\n')
-}
-
-function createResearchLoop({ config, backboardClient, jinaClient, sessionStore, projectRoot }) {
+function createResearchLoop({ config, backboardClient, jinaClient, sessionStore, projectRoot, userDataPath }) {
   const systemPromptPath = path.join(projectRoot, 'electron', 'research-agent', 'system-prompt.md')
   let assistantPromise = null
   const threadPromisesByChatId = new Map()
@@ -55,10 +23,6 @@ function createResearchLoop({ config, backboardClient, jinaClient, sessionStore,
 
   function readSystemPrompt() {
     return fs.readFileSync(systemPromptPath, 'utf8')
-  }
-
-  function shouldUseAttachmentSafeMode(attachmentFilePaths) {
-    return config.backboardProvider === 'anthropic' && Array.isArray(attachmentFilePaths) && attachmentFilePaths.length > 0
   }
 
   function loadSession() {
@@ -245,49 +209,7 @@ function createResearchLoop({ config, backboardClient, jinaClient, sessionStore,
     }
   }
 
-  async function runAttachmentSafeAnalysis({ prompt, runId, onEvent, attachmentFilePaths }) {
-    onEvent({ type: 'progress', message: 'Using attachment-safe analysis mode...' })
-
-    const assistant = await backboardClient.createAssistant({
-      name: 'Research Agent (Attachment-safe)',
-      systemPrompt: ATTACHMENT_SAFE_SYSTEM_PROMPT,
-      tools: [],
-    })
-
-    const thread = await backboardClient.createThread(assistant.assistant_id)
-    const normalized = backboardClient.normalizeMessageResponse(
-      await backboardClient.addMessage({
-        threadId: thread.thread_id,
-        content: prompt,
-        llmProvider: config.backboardProvider,
-        modelName: config.backboardModel,
-        attachmentFilePaths,
-      }),
-    )
-
-    return {
-      runId,
-      summary: normalized.content || '',
-      threadId: thread.thread_id,
-      assistantId: assistant.assistant_id,
-    }
-  }
-
-  async function seedAttachmentContext({ chatId, originalPrompt, summary, onEvent }) {
-    const session = await ensureThreadForChat({ chatId, onEvent })
-    await backboardClient.addMessage({
-      threadId: session.threadId,
-      content: buildAttachmentContextSeed({ originalPrompt, summary }),
-      llmProvider: config.backboardProvider,
-      modelName: config.backboardModel,
-      attachmentFilePaths: [],
-      sendToLlm: false,
-    })
-
-    return session
-  }
-
-  async function runToolEnabledConversation({ chatId, prompt, onEvent }) {
+  async function runToolEnabledConversation({ chatId, prompt, onEvent, attachmentFilePaths = [] }) {
     let session = await ensureThreadForChat({ chatId, onEvent })
     onEvent({ type: 'progress', message: 'Submitting prompt to research agent...' })
 
@@ -299,7 +221,7 @@ function createResearchLoop({ config, backboardClient, jinaClient, sessionStore,
           content: prompt,
           llmProvider: config.backboardProvider,
           modelName: config.backboardModel,
-          attachmentFilePaths: [],
+          attachmentFilePaths,
         }),
       )
     } catch (error) {
@@ -317,7 +239,7 @@ function createResearchLoop({ config, backboardClient, jinaClient, sessionStore,
           content: prompt,
           llmProvider: config.backboardProvider,
           modelName: config.backboardModel,
-          attachmentFilePaths: [],
+          attachmentFilePaths,
         }),
       )
     }
@@ -366,33 +288,27 @@ function createResearchLoop({ config, backboardClient, jinaClient, sessionStore,
     }
 
     const runPromise = (async () => {
-      if (shouldUseAttachmentSafeMode(attachmentFilePaths)) {
-        const attachmentResult = await runAttachmentSafeAnalysis({
-          prompt,
-          runId,
-          onEvent,
+      let finalPrompt = prompt
+      const shouldInlineAttachmentContext = config.backboardProvider === 'anthropic' && attachmentFilePaths.length > 0
+
+      if (shouldInlineAttachmentContext) {
+        const attachmentContext = await buildAttachmentContext({
           attachmentFilePaths,
-        })
-
-        const seededSession = await seedAttachmentContext({
-          chatId: normalizedChatId,
-          originalPrompt: prompt,
-          summary: attachmentResult.summary,
+          projectRoot,
+          userDataPath,
           onEvent,
         })
 
-        return {
-          runId,
-          summary: attachmentResult.summary,
-          threadId: seededSession.threadId,
-          assistantId: seededSession.assistantId,
+        if (attachmentContext) {
+          finalPrompt = `${prompt}\n\n${attachmentContext}`
         }
       }
 
       const conversationResult = await runToolEnabledConversation({
         chatId: normalizedChatId,
-        prompt,
+        prompt: finalPrompt,
         onEvent,
+        attachmentFilePaths: shouldInlineAttachmentContext ? [] : attachmentFilePaths,
       })
 
       return {
