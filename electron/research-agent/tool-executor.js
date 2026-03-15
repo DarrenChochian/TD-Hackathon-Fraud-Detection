@@ -75,7 +75,7 @@ async function executeWebsearch(args, jinaClient) {
   }
 
   if (queries.length === 0) {
-    throw new Error('webseach requires query or queries')
+    throw new Error('websearch requires query or queries')
   }
 
   const results = await Promise.all(queries.map((query) => jinaClient.websearch(query)))

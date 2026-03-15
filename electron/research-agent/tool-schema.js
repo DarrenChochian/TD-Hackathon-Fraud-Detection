@@ -2,8 +2,8 @@ const RESEARCH_TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'webseach',
-      description: 'If a company is mentioned in the message, Run web search using Jina AI on the company call details and fraud prevention information for one or more research queries.',
+      name: 'websearch',
+      description: 'Run web search using Jina AI for one or more research queries about legitimacy, fraud risk, policies, reputation, or other relevant context.',
       parameters: {
         type: 'object',
         properties: {
