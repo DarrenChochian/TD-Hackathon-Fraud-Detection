@@ -282,8 +282,15 @@ function buildSuspiciousScanPrompt({ screenshotResult, callerTranscript, userTra
     .pop() || 'screenshot.png'
 
   return [
-    'Analyze this interaction for scam risk.',
+    'Analyze this interaction for scam risk and compare it against any real company policies mentioned in the screenshot.',
     'A screenshot image is attached to this message. Use it as primary evidence.',
+    'Do not confuse the messaging platform with the company being impersonated.',
+    'If the screenshot is on Discord, Messenger, Instagram, email, SMS, or another platform, treat that as the platform only unless the sender explicitly claims to be from that platform.',
+    'Prioritize the company the sender claims to represent, or the company tied to the requested payment/account verification.',
+    'If a company, bank, merchant, app, or platform is named or visible, research that company\'s official website and official fraud, phishing, support, contact, or terms pages.',
+    'Use official company pages first, not generic scam advice.',
+    'If the suspicious claims conflict with the company\'s official policies, say that clearly.',
+    'If no company can be identified or no official company policy pages can be found, say "Company not found".',
     `Screenshot captured at: ${capturedAt}`,
     `Attached screenshot filename: ${screenshotName}`,
     `Screenshot size: ${screenshotResult.width}x${screenshotResult.height}`,
@@ -293,15 +300,28 @@ function buildSuspiciousScanPrompt({ screenshotResult, callerTranscript, userTra
     '- Untrusted or mismatched domains/links',
     '- Urgency/threat language or pressure tactics',
     '- Requests for payment, gift cards, crypto, wire transfer, or remote-access tools',
+    '- Claims about what the company supposedly needs, allows, or does when contacting customers',
     '',
     'Transcript context:',
     `- Caller: ${caller}`,
     `- User: ${user}`,
     '',
     'Return:',
-    '1) Risk level (low/medium/high)',
-    '2) Red flags found (if any)',
-    '3) Immediate next steps for the user',
+    '## Company',
+    '- Name the claimed company being verified, or say Company not found.',
+    '- If relevant, separately mention the platform hosting the conversation.',
+    '## What Was Seen',
+    '- Summarize the important claims or requests in the screenshot.',
+    '## Official Guidance Found',
+    '- List the relevant official fraud/contact/support guidance you found from the company website.',
+    '## Policy Mismatch Check',
+    '- Compare the suspicious claims against the official guidance and say what conflicts.',
+    '## Risk',
+    '- Give a risk level: low, medium, or high.',
+    '## What To Do Now',
+    '- Give immediate next steps for the user.',
+    '## Sources',
+    '- Include links to the official company pages you relied on.',
   ].join('\n')
 }
 
@@ -790,7 +810,14 @@ export default function App() {
     })
   }
 
-  const runResearchPrompt = async ({ chatId, text, resetThread = false, replaceChatMessages = false, attachmentFilePaths = [] }) => {
+  const runResearchPrompt = async ({
+    chatId,
+    text,
+    displayText = null,
+    resetThread = false,
+    replaceChatMessages = false,
+    attachmentFilePaths = [],
+  }) => {
     const normalizedChatId = String(chatId || '').trim()
     const prompt = String(text || '').trim()
     if (!normalizedChatId || !prompt || runningByChatRef.current[normalizedChatId]) return false
@@ -806,7 +833,7 @@ export default function App() {
       id: createMessageId('user'),
       type: 'text',
       role: 'user',
-      text: prompt,
+      text: typeof displayText === 'string' && displayText.trim() ? displayText.trim() : prompt,
     })
 
     if (!window.electronAPI?.runResearch) {
@@ -858,6 +885,7 @@ export default function App() {
       await runResearchPrompt({
         chatId: SUSPICIOUS_SCAN_CHAT_ID,
         text: prompt,
+        displayText: 'Analyze this screenshot for scam risk and compare it with the company\'s official fraud/contact policies.',
         resetThread: true,
         replaceChatMessages: true,
         attachmentFilePaths: [screenshotResult.filePath],

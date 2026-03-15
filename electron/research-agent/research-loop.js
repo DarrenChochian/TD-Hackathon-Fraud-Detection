@@ -8,9 +8,58 @@ const ATTACHMENT_SAFE_SYSTEM_PROMPT = [
   'You are FRAUDLY, a scam prevention agent.',
   'Analyze the user request and any attached files/images using the attachments as primary evidence.',
   'Do not call tools or rely on external web research in this mode.',
-  'Return concise markdown that directly answers the user request.',
-  'If the user asks for specific fields or sections, follow that exact format.',
+  'Your job in this mode is to extract evidence from the attachment, not to give the final researched verdict.',
+  'Return concise markdown with only the facts you can support from the attachment.',
+  'Your output must prioritize exact text extraction from the screenshot over interpretation.',
+  'If a line of text is readable, preserve the wording closely and quote it.',
+  'Pay special attention to company names, bank names, brand names, abbreviations, and claims like "I am from TD", "this is TD", "from Amazon", or "from your bank".',
+  'Do not confuse the app or platform hosting the conversation with the company named inside the conversation.',
+  'Use this exact format:',
+  '## Visible Text',
+  '- Quote the most important readable lines from the screenshot.',
+  '## Claimed Company',
+  '- State the company or brand named in the conversation. If none is visible, say "Company not found".',
+  '## Platform',
+  '- State the platform hosting the conversation if visible.',
+  '## Red Flags Seen',
+  '- List requests for sensitive data, urgency, payment claims, links, phone numbers, or impersonation cues.',
+  '## Uncertainty',
+  '- Mention any text that was hard to read or ambiguous.',
 ].join('\n')
+
+function extractClaimedCompany(summary) {
+  const text = String(summary || '')
+  if (!text.trim()) return ''
+
+  const claimedSectionMatch = text.match(/##\s*Claimed Company\s*\n([\s\S]*?)(?:\n##\s|$)/i)
+  if (claimedSectionMatch) {
+    const cleaned = claimedSectionMatch[1]
+      .replace(/^[\s*-]+/gm, '')
+      .replace(/Company not found.*$/im, '')
+      .trim()
+    if (cleaned) {
+      const firstLine = cleaned.split('\n').find((line) => line.trim())
+      if (firstLine) return firstLine.trim()
+    }
+  }
+
+  const patterns = [
+    /\b(?:i am|i'm|im)\s+from\s+([A-Z][A-Za-z0-9&.' -]{1,40})/i,
+    /\bfrom\s+([A-Z]{2,10})\b/,
+    /\bthis is\s+([A-Z][A-Za-z0-9&.' -]{1,40})/i,
+    /\brepresent(?:ing)?\s+([A-Z][A-Za-z0-9&.' -]{1,40})/i,
+  ]
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern)
+    if (!match?.[1]) continue
+    const candidate = match[1].trim().replace(/[.,:;!?]+$/, '')
+    if (!candidate || /^(discord|messenger|instagram|whatsapp|gmail|email|sms)$/i.test(candidate)) continue
+    return candidate
+  }
+
+  return ''
+}
 
 function buildAttachmentEvidenceMessage(summary) {
   const normalizedSummary = String(summary || '').trim()
@@ -34,7 +83,61 @@ function buildAttachmentContextSeed({ originalPrompt, summary }) {
     String(originalPrompt || '').trim(),
     '',
     evidenceMessage,
+    '',
+    'Use this attachment evidence as the factual basis for any later tool-enabled research.',
+    'If a company is named in the evidence, compare the suspicious claims against the company\'s official fraud, support, and contact-policy pages.',
   ].join('\n')
+}
+
+function buildAttachmentResearchPrompt({ originalPrompt, summary, claimedCompanyHint }) {
+  return [
+    'Use the prior attachment evidence already in the thread to answer this request.',
+    'Do not ask for the screenshot again.',
+    'If the screenshot is on a platform like Discord, Messenger, Instagram, email, or SMS, do not confuse the platform with the company being impersonated.',
+    'Prioritize the company the suspicious sender claims to represent or the company tied to the requested payment/account verification.',
+    claimedCompanyHint
+      ? `Most likely claimed company detected from the screenshot evidence: ${claimedCompanyHint}`
+      : 'No reliable claimed-company hint was extracted from the screenshot evidence.',
+    'If a company is named or strongly implied, research its official website and official fraud/contact/support policies before concluding.',
+    'Explicitly compare what the suspicious party said with what the company says it will or will not do.',
+    'If no company can be identified from the evidence, state "Company not found" and continue with general scam analysis only.',
+    '',
+    'Original request to fulfill:',
+    String(originalPrompt || '').trim(),
+    '',
+    'Attachment evidence summary:',
+    String(summary || '').trim() || '(no attachment evidence available)',
+  ].join('\n')
+}
+
+function sanitizeSummary(summary) {
+  let text = String(summary || '').trim()
+  if (!text) return ''
+
+  text = text.replace(/\r\n/g, '\n')
+
+  const lines = text.split('\n')
+  while (lines.length > 0) {
+    const lastLine = String(lines[lines.length - 1] || '').trim()
+    if (!lastLine) {
+      lines.pop()
+      continue
+    }
+
+    const looksDanglingMarkdown =
+      lastLine.length < 40 &&
+      (/\*\*$/.test(lastLine) ||
+        /^\*\*[^*]*\)?$/.test(lastLine) ||
+        /^[-*]\s*$/.test(lastLine) ||
+        /^[([{\-*_`]+$/.test(lastLine))
+
+    if (!looksDanglingMarkdown) break
+    lines.pop()
+  }
+
+  text = lines.join('\n').trim()
+  text = text.replace(/\*\*([^*\n]{0,40})$/, '$1').trim()
+  return text
 }
 
 function createResearchLoop({ config, backboardClient, jinaClient, sessionStore, projectRoot }) {
@@ -349,7 +452,7 @@ function createResearchLoop({ config, backboardClient, jinaClient, sessionStore,
     }
 
     return {
-      summary: finalSummary || normalized.content || '',
+      summary: sanitizeSummary(finalSummary || normalized.content || ''),
       threadId: session.threadId,
       assistantId: session.assistantId,
     }
@@ -373,6 +476,7 @@ function createResearchLoop({ config, backboardClient, jinaClient, sessionStore,
           onEvent,
           attachmentFilePaths,
         })
+        const claimedCompanyHint = extractClaimedCompany(attachmentResult.summary)
 
         const seededSession = await seedAttachmentContext({
           chatId: normalizedChatId,
@@ -381,11 +485,21 @@ function createResearchLoop({ config, backboardClient, jinaClient, sessionStore,
           onEvent,
         })
 
+        const researchedResult = await runToolEnabledConversation({
+          chatId: normalizedChatId,
+          prompt: buildAttachmentResearchPrompt({
+            originalPrompt: prompt,
+            summary: attachmentResult.summary,
+            claimedCompanyHint,
+          }),
+          onEvent,
+        })
+
         return {
           runId,
-          summary: attachmentResult.summary,
-          threadId: seededSession.threadId,
-          assistantId: seededSession.assistantId,
+          summary: researchedResult.summary,
+          threadId: researchedResult.threadId || seededSession.threadId,
+          assistantId: researchedResult.assistantId || seededSession.assistantId,
         }
       }
 

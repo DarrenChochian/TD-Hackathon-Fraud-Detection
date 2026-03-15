@@ -14,8 +14,15 @@ function parseArguments(toolCall) {
   }
 }
 
-function getToolCallId(toolCall) {
-  return toolCall?.tool_call_id || toolCall?.tool_use_id || toolCall?.toolUseId || toolCall?.id || ''
+function getToolIds(toolCall) {
+  return {
+    toolCallId: toolCall?.tool_call_id || toolCall?.toolCallId || '',
+    toolUseId: toolCall?.tool_use_id || toolCall?.toolUseId || toolCall?.id || '',
+  }
+}
+
+function getDisplayToolId(toolIds) {
+  return toolIds.toolUseId || toolIds.toolCallId || ''
 }
 
 function truncate(value, max = 180) {
@@ -76,7 +83,8 @@ async function executeWebsearch(args, jinaClient) {
 }
 
 async function executeSingleToolCall(toolCall, context) {
-  const toolCallId = getToolCallId(toolCall)
+  const toolIds = getToolIds(toolCall)
+  const toolCallId = getDisplayToolId(toolIds)
   const toolName = toolCall?.function?.name
   const args = parseArguments(toolCall)
   const argsPreview = buildArgsPreview(args)
@@ -109,7 +117,11 @@ async function executeSingleToolCall(toolCall, context) {
           outputPreview: createOutputPreview(output),
         })
       }
-      return { tool_call_id: toolCallId, output }
+      return {
+        tool_call_id: toolIds.toolCallId || toolIds.toolUseId,
+        tool_use_id: toolIds.toolUseId || toolIds.toolCallId,
+        output,
+      }
     }
 
     if (toolName === 'webfetch') {
@@ -125,7 +137,11 @@ async function executeSingleToolCall(toolCall, context) {
           outputPreview: createOutputPreview(output),
         })
       }
-      return { tool_call_id: toolCallId, output }
+      return {
+        tool_call_id: toolIds.toolCallId || toolIds.toolUseId,
+        tool_use_id: toolIds.toolUseId || toolIds.toolCallId,
+        output,
+      }
     }
 
     if (toolName === 'message') {
@@ -142,7 +158,11 @@ async function executeSingleToolCall(toolCall, context) {
           outputPreview: createOutputPreview(output),
         })
       }
-      return { tool_call_id: toolCallId, output }
+      return {
+        tool_call_id: toolIds.toolCallId || toolIds.toolUseId,
+        tool_use_id: toolIds.toolUseId || toolIds.toolCallId,
+        output,
+      }
     }
 
     if (toolName === 'summary') {
@@ -158,7 +178,11 @@ async function executeSingleToolCall(toolCall, context) {
           outputPreview: createOutputPreview(output),
         })
       }
-      return { tool_call_id: toolCallId, output }
+      return {
+        tool_call_id: toolIds.toolCallId || toolIds.toolUseId,
+        tool_use_id: toolIds.toolUseId || toolIds.toolCallId,
+        output,
+      }
     }
 
     throw new Error(`Unsupported tool: ${toolName}`)
@@ -175,7 +199,8 @@ async function executeSingleToolCall(toolCall, context) {
     }
 
     return {
-      tool_call_id: toolCallId,
+      tool_call_id: toolIds.toolCallId || toolIds.toolUseId,
+      tool_use_id: toolIds.toolUseId || toolIds.toolCallId,
       output: JSON.stringify({
         error: error instanceof Error ? error.message : 'Tool execution failed',
         tool: toolName,
