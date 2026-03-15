@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { BORDER_PINK, GLASS_BACKDROP } from '../utils/constants'
 
-export default function Notification({ message, onClose, onMouseEnter, onMouseLeave }) {
+export default function Notification({ title = '', message, onClick, onClose, onMouseEnter, onMouseLeave }) {
   const [visible, setVisible] = useState(false)
+  const actionable = typeof onClick === 'function'
 
   useEffect(() => {
     // Small delay to trigger the enter animation
@@ -35,6 +36,15 @@ export default function Notification({ message, onClose, onMouseEnter, onMouseLe
       }}
     >
       <div
+        role={actionable ? 'button' : undefined}
+        tabIndex={actionable ? 0 : undefined}
+        onClick={actionable ? onClick : undefined}
+        onKeyDown={actionable ? (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            onClick?.()
+          }
+        } : undefined}
         className="flex items-center gap-3 px-4 py-2.5 rounded-full border backdrop-blur-xl"
         style={{
           background: 'rgba(10, 12, 18, 0.75)',
@@ -42,10 +52,14 @@ export default function Notification({ message, onClose, onMouseEnter, onMouseLe
           boxShadow: '0 8px 32px rgba(0, 0, 0, 0.25), inset 0 1px rgba(255, 255, 255, 0.1)',
           backdropFilter: GLASS_BACKDROP,
           WebkitBackdropFilter: GLASS_BACKDROP,
+          cursor: actionable ? 'pointer' : 'default',
         }}
       >
         <div className="w-2 h-2 rounded-full bg-pink-500 shadow-[0_0_10px_rgba(236,72,153,0.8)] animate-pulse shrink-0" />
-        <span className="text-xs font-medium text-pink-50/90 tracking-wide">{message}</span>
+        <div className="min-w-0">
+          {title ? <div className="text-[11px] font-semibold text-pink-100 tracking-wide truncate">{title}</div> : null}
+          <div className="text-xs font-medium text-pink-50/90 tracking-wide truncate">{message}</div>
+        </div>
         <button
           type="button"
           onPointerDown={(event) => {

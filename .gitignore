@@ -9,5 +9,4 @@ release
 npm-debug.log*
 CLAUDE.md
 /imgs
-.env.example
 /storage

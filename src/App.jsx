@@ -12,7 +12,20 @@ import { useTranscription } from './hooks/useTranscription'
 import { useResearch } from './hooks/useResearch'
 import { useHiveDetection } from './hooks/useHiveDetection'
 import { SHOW_TRANSCRIPTION_DEBUG, SUSPICIOUS_SCAN_CHAT_ID } from './utils/constants'
-import { buildSuspiciousScanPrompt, truncate, previewForHistory } from './utils/chat'
+import { buildBackgroundMonitorPrompt, buildSuspiciousScanPrompt, truncate, previewForHistory } from './utils/chat'
+import {
+  buildIncidentAlertTitle,
+  buildIncidentChatSummary,
+  buildMonitorVerdictLog,
+  hasMeaningfulIncidentChange,
+  isSameIncident,
+  isSuspiciousMonitorResult,
+  parseMonitorSummary,
+} from './utils/monitoring'
+
+const MONITOR_INTERVAL_MS = 3000
+const ACTIVE_INCIDENT_NOTIFICATION_ID = 'active-monitor-incident'
+const SAFE_MONITOR_CLEAR_STREAK = 2
 
 export default function App() {
   const isMac = window.electronAPI?.platform === 'darwin'
@@ -22,11 +35,22 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [screenshotStatus, setScreenshotStatus] = useState('idle')
   const [lastScreenshotAt, setLastScreenshotAt] = useState('')
+  const [lastAnalysisAt, setLastAnalysisAt] = useState('')
+  const [monitorLogs, setMonitorLogs] = useState([])
   const [notifications, setNotifications] = useState([{ id: Date.now(), message: 'Welcome to Fraudly' }])
   const [callerStream, setCallerStream] = useState(null)
   const latestTranscriptsRef = useRef({ caller: '', user: '' })
+  const isListeningRef = useRef(false)
+  const chatOpenRef = useRef(false)
+  const incidentNotificationOpenRef = useRef(false)
+  const previousChatOpenRef = useRef(false)
   const suspiciousScanHandlerRef = useRef(async () => {})
+  const monitorHandlerRef = useRef(async () => {})
   const suspiciousScanInFlightRef = useRef(false)
+  const monitorBusyRef = useRef(false)
+  const monitorIntervalRef = useRef(null)
+  const safeMonitorStreakRef = useRef(0)
+  const activeIncidentRef = useRef(null)
   
   const { handleInteractiveEnter, handleInteractiveLeave, resetOverlayInteractivity } = useInteractivity()
   const { permissionStatus, requestPermission, refreshPermissionStatus } = usePermissions()
@@ -54,8 +78,11 @@ export default function App() {
     runningByChat,
     runningByChatRef,
     toggleToolCard,
+    appendStoredAssistantMessage,
+    importRunToChat,
     ensureChat,
     createAnalysisChat,
+    setChatTitle,
     runResearchPrompt,
   } = useResearch()
 
@@ -73,7 +100,85 @@ export default function App() {
     latestTranscriptsRef.current = latestTranscripts
   }, [latestTranscripts])
 
+  useEffect(() => {
+    isListeningRef.current = isListening
+  }, [isListening])
+
+  useEffect(() => {
+    chatOpenRef.current = chatOpen
+    if (previousChatOpenRef.current && !chatOpen && activeIncidentRef.current) {
+      activeIncidentRef.current = {
+        ...activeIncidentRef.current,
+        awaitingRenotify: true,
+      }
+    }
+    previousChatOpenRef.current = chatOpen
+  }, [chatOpen])
+
+  useEffect(() => {
+    incidentNotificationOpenRef.current = notifications.some((item) => item.id === ACTIVE_INCIDENT_NOTIFICATION_ID)
+  }, [notifications])
+
+  const focusIncidentChat = (chatId) => {
+    if (!chatId) return
+    setChatOpen(true)
+    setSelectedChatId(chatId)
+  }
+
+  const upsertIncidentNotification = ({ title, message, chatId }) => {
+    const nextNotification = {
+      id: ACTIVE_INCIDENT_NOTIFICATION_ID,
+      title,
+      message,
+      chatId,
+    }
+
+    setNotifications((prev) => [
+      ...prev.filter((item) => item.id !== ACTIVE_INCIDENT_NOTIFICATION_ID),
+      nextNotification,
+    ])
+  }
+
+  const clearIncidentNotification = ({ armRenotify = false } = {}) => {
+    if (armRenotify && activeIncidentRef.current) {
+      activeIncidentRef.current = {
+        ...activeIncidentRef.current,
+        awaitingRenotify: true,
+      }
+    }
+    setNotifications((prev) => prev.filter((item) => item.id !== ACTIVE_INCIDENT_NOTIFICATION_ID))
+  }
+
+  const shouldSuppressAutoIncidentUpdate = () => incidentNotificationOpenRef.current || chatOpenRef.current
+
+  const appendMonitorLog = (message) => {
+    const nextEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      at: new Date().toLocaleTimeString(),
+      message,
+    }
+
+    setMonitorLogs((prev) => [...prev.slice(-7), nextEntry])
+  }
+
+  const resetBackgroundMonitorState = ({ clearNotification = false } = {}) => {
+    monitorBusyRef.current = false
+    safeMonitorStreakRef.current = 0
+    activeIncidentRef.current = null
+    setLastAnalysisAt('')
+    setMonitorLogs([])
+    if (clearNotification) {
+      clearIncidentNotification()
+    }
+  }
+
   const stopListeningSession = async ({ reason } = {}) => {
+    isListeningRef.current = false
+    if (monitorIntervalRef.current) {
+      clearInterval(monitorIntervalRef.current)
+      monitorIntervalRef.current = null
+    }
+    resetBackgroundMonitorState()
     cleanupMediaCapture()
     setCallerStream(null)
     try {
@@ -152,6 +257,7 @@ export default function App() {
     }
 
     setIsListening(true)
+    isListeningRef.current = true
     setTranscriptionSessionState('listening')
     await refreshPermissionStatus()
   }
@@ -164,13 +270,15 @@ export default function App() {
     startListeningSession()
   }
 
-  const captureScreenshot = async () => {
+  const captureScreenshot = async ({ silent = false } = {}) => {
     setScreenshotStatus('capturing')
     try {
       const result = await window.electronAPI?.captureScreenshot?.()
       if (!result?.ok) {
         setScreenshotStatus('error')
-        setTranscriptionError(result?.error || 'Failed to capture screenshot.')
+        if (!silent) {
+          setTranscriptionError(result?.error || 'Failed to capture screenshot.')
+        }
         return null
       }
 
@@ -179,8 +287,167 @@ export default function App() {
       return result
     } catch {
       setScreenshotStatus('error')
-      setTranscriptionError('Failed to capture screenshot.')
+      if (!silent) {
+        setTranscriptionError('Failed to capture screenshot.')
+      }
       return null
+    }
+  }
+
+  const handleSafeMonitorResult = () => {
+    setLastAnalysisAt(new Date().toLocaleTimeString())
+    if (!activeIncidentRef.current) return
+
+    safeMonitorStreakRef.current += 1
+    appendMonitorLog(`Safe scan (${safeMonitorStreakRef.current}/${SAFE_MONITOR_CLEAR_STREAK}) while incident is active`)
+    if (safeMonitorStreakRef.current >= SAFE_MONITOR_CLEAR_STREAK) {
+      appendMonitorLog('Cleared active incident after consecutive safe scans')
+      resetBackgroundMonitorState({ clearNotification: true })
+    }
+  }
+
+  const handleSuspiciousMonitorResult = async ({ monitorResult, runResult }) => {
+    const currentIncident = activeIncidentRef.current
+    const sameIncident = isSameIncident(currentIncident, monitorResult)
+    const shouldAppendUpdate = !sameIncident || hasMeaningfulIncidentChange(currentIncident, monitorResult)
+    const quickDebrief = monitorResult.quickDebrief || truncate(monitorResult.displaySummary, 140)
+
+    safeMonitorStreakRef.current = 0
+    setLastAnalysisAt(new Date().toLocaleTimeString())
+
+    if (!sameIncident) {
+      const provisionalTitle = monitorResult.incidentTitle || 'Possible fraud detected'
+      const chat = await createAnalysisChat({ title: provisionalTitle })
+      if (!chat?.id) return
+
+      upsertIncidentNotification({
+        title: buildIncidentAlertTitle(monitorResult),
+        message: quickDebrief,
+        chatId: chat.id,
+      })
+
+      const importedChat = runResult?.run ? await importRunToChat({ chatId: chat.id, run: runResult.run }) : null
+
+      const finalMonitorResult = monitorResult
+      const finalQuickDebrief = finalMonitorResult.quickDebrief || truncate(finalMonitorResult.displaySummary, 140)
+
+      if (finalMonitorResult.incidentTitle) {
+        await setChatTitle(chat.id, finalMonitorResult.incidentTitle)
+      }
+
+      activeIncidentRef.current = {
+        chatId: chat.id,
+        title: finalMonitorResult.incidentTitle,
+        quickDebrief: finalQuickDebrief,
+        fingerprint: finalMonitorResult.fingerprint,
+        riskLevel: finalMonitorResult.riskLevel,
+        lastSummary: finalMonitorResult.displaySummary,
+        lastSeenAt: new Date().toISOString(),
+        awaitingRenotify: false,
+      }
+
+      if (!importedChat) {
+        await appendStoredAssistantMessage({
+          chatId: chat.id,
+          text: buildIncidentChatSummary(finalMonitorResult),
+        })
+      }
+
+      upsertIncidentNotification({
+        title: buildIncidentAlertTitle(finalMonitorResult),
+        message: finalQuickDebrief,
+        chatId: chat.id,
+      })
+      appendMonitorLog(`New incident detected: ${finalMonitorResult.incidentTitle || 'Possible fraud detected'}`)
+      return
+    }
+
+    activeIncidentRef.current = {
+      ...currentIncident,
+      title: monitorResult.incidentTitle || currentIncident.title,
+      quickDebrief: quickDebrief || currentIncident.quickDebrief,
+      fingerprint: monitorResult.fingerprint || currentIncident.fingerprint,
+      riskLevel: monitorResult.riskLevel || currentIncident.riskLevel,
+      lastSummary: monitorResult.displaySummary || currentIncident.lastSummary,
+      lastSeenAt: new Date().toISOString(),
+    }
+
+    if (shouldSuppressAutoIncidentUpdate()) {
+      appendMonitorLog(`Auto-update suppressed while notification or chat is open for ${monitorResult.incidentTitle || currentIncident.title || 'active incident'}`)
+      return
+    }
+
+    if (!shouldAppendUpdate && !currentIncident.awaitingRenotify) {
+      appendMonitorLog(`Same incident still visible: ${monitorResult.incidentTitle || currentIncident.title || 'active incident'}`)
+      return
+    }
+
+    activeIncidentRef.current = {
+      ...activeIncidentRef.current,
+      awaitingRenotify: false,
+    }
+
+    if (runResult?.run) {
+      await importRunToChat({ chatId: currentIncident.chatId, run: runResult.run })
+    }
+
+    upsertIncidentNotification({
+      title: buildIncidentAlertTitle(monitorResult),
+      message: quickDebrief,
+      chatId: currentIncident.chatId,
+    })
+    appendMonitorLog(`Incident updated: ${monitorResult.incidentTitle || currentIncident.title || 'active incident'}`)
+  }
+
+  const runBackgroundMonitorPass = async () => {
+    if (!isListeningRef.current || !window.electronAPI?.runBackgroundResearch) return
+    if (monitorBusyRef.current) {
+      appendMonitorLog('Skipped monitor cycle because previous analysis is still running')
+      return
+    }
+
+    monitorBusyRef.current = true
+    try {
+      appendMonitorLog('Capturing screenshot for background monitor')
+      const screenshotResult = await captureScreenshot({ silent: true })
+      if (!screenshotResult?.ok || !isListeningRef.current) return
+
+      const prompt = buildBackgroundMonitorPrompt({
+        screenshotResult,
+        callerTranscript: latestTranscriptsRef.current.caller,
+        userTranscript: latestTranscriptsRef.current.user,
+        activeIncident: activeIncidentRef.current,
+      })
+      const attachmentFilePaths = [screenshotResult.filePath]
+      const monitorThreadChatId = `background-monitor-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+      appendMonitorLog('Running fraud analysis on latest screenshot')
+      const result = await window.electronAPI.runBackgroundResearch({
+        chatId: monitorThreadChatId,
+        historyChatId: '',
+        prompt,
+        displayPrompt: 'Background fraud check',
+        resetThread: true,
+        attachmentFilePaths,
+      })
+      if (!isListeningRef.current) return
+
+      const monitorResult = parseMonitorSummary(result?.summary || '')
+      if (!monitorResult.rawSummary.includes('```fraud-monitor')) {
+        appendMonitorLog('Monitor response missing structured fraud-monitor block; treating result as incomplete')
+        return
+      }
+      appendMonitorLog(buildMonitorVerdictLog(monitorResult))
+      if (isSuspiciousMonitorResult(monitorResult)) {
+        await handleSuspiciousMonitorResult({ monitorResult, runResult: result })
+      } else {
+        handleSafeMonitorResult()
+      }
+    } catch (error) {
+      appendMonitorLog(`Monitor error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      console.error('Background fraud monitor failed:', error)
+    } finally {
+      monitorBusyRef.current = false
     }
   }
 
@@ -216,6 +483,7 @@ export default function App() {
   }
 
   suspiciousScanHandlerRef.current = handleSuspiciousScanHotkey
+  monitorHandlerRef.current = runBackgroundMonitorPass
 
   useEffect(() => {
     const unsubSettings = window.electronAPI?.onOpenSettings?.(() => {
@@ -242,14 +510,54 @@ export default function App() {
   }, [handleChatToggle, resetOverlayInteractivity])
 
   useEffect(() => {
+    if (!isListening) return undefined
+
+    monitorHandlerRef.current?.().catch((error) => {
+      console.error('Initial background fraud monitor pass failed:', error)
+    })
+
+    monitorIntervalRef.current = setInterval(() => {
+      monitorHandlerRef.current?.().catch((error) => {
+        console.error('Background fraud monitor pass failed:', error)
+      })
+    }, MONITOR_INTERVAL_MS)
+
     return () => {
+      if (monitorIntervalRef.current) {
+        clearInterval(monitorIntervalRef.current)
+        monitorIntervalRef.current = null
+      }
+      monitorBusyRef.current = false
+    }
+  }, [isListening])
+
+  useEffect(() => {
+    return () => {
+      if (monitorIntervalRef.current) {
+        clearInterval(monitorIntervalRef.current)
+        monitorIntervalRef.current = null
+      }
       cleanupMediaCapture()
       window.electronAPI?.stopTranscription?.()
     }
   }, [])
 
   const handleChatSend = async (text) => {
-    await runResearchPrompt({ chatId: selectedChatId, text })
+    let prompt = text
+    let attachmentFilePaths = []
+
+    const screenshotResult = await captureScreenshot({ silent: true })
+    if (screenshotResult?.ok) {
+      attachmentFilePaths = [screenshotResult.filePath]
+      prompt = `${text}\n\nA fresh screenshot is attached for current on-screen context. Use it when answering this follow-up.`
+    }
+
+    await runResearchPrompt({
+      chatId: selectedChatId,
+      text: prompt,
+      displayText: text,
+      attachmentFilePaths,
+    })
   }
 
   const handleCreateAnalysisChat = async () => {
@@ -316,6 +624,8 @@ export default function App() {
           lastTranscriptionActivityAt={lastTranscriptionActivityAt}
           screenshotStatus={screenshotStatus}
           lastScreenshotAt={lastScreenshotAt}
+          lastAnalysisAt={lastAnalysisAt}
+          monitorLogs={monitorLogs}
           transcriptionWarning={transcriptionWarning}
           transcriptionError={transcriptionError}
           isMac={isMac}
@@ -375,8 +685,16 @@ export default function App() {
         {notifications.map((n) => (
           <Notification
             key={n.id}
+            title={n.title}
             message={n.message}
-            onClose={() => setNotifications((prev) => prev.filter((item) => item.id !== n.id))}
+            onClick={n.chatId ? () => focusIncidentChat(n.chatId) : undefined}
+            onClose={() => {
+              if (n.id === ACTIVE_INCIDENT_NOTIFICATION_ID) {
+                clearIncidentNotification({ armRenotify: true })
+                return
+              }
+              setNotifications((prev) => prev.filter((item) => item.id !== n.id))
+            }}
             onMouseEnter={handleInteractiveEnter}
             onMouseLeave={handleInteractiveLeave}
           />

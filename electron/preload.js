@@ -4,11 +4,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   setOverlayInteractivity: (interactive) => ipcRenderer.send('overlay:set-interactive', interactive),
   listResearchChats: () => ipcRenderer.invoke('research:list-chats'),
-  ensureResearchChat: (chatId) => ipcRenderer.invoke('research:ensure-chat', { chatId }),
-  createAnalysisResearchChat: () => ipcRenderer.invoke('research:create-analysis-chat'),
+  ensureResearchChat: (chatId, title) => ipcRenderer.invoke('research:ensure-chat', { chatId, title }),
+  createAnalysisResearchChat: (title) => ipcRenderer.invoke('research:create-analysis-chat', { title }),
+  setResearchChatTitle: (chatId, title) => ipcRenderer.invoke('research:set-chat-title', { chatId, title }),
+  appendResearchEntry: (payload) => ipcRenderer.invoke('research:append-entry', payload),
+  importResearchRun: (payload) => ipcRenderer.invoke('research:import-run', payload),
   initializeResearchChats: (chatIds) => ipcRenderer.invoke('research:initialize-chats', { chatIds }),
   getChatHistory: (chatId) => ipcRenderer.invoke('research:get-history', { chatId }),
   resetResearchThread: (chatId) => ipcRenderer.invoke('research:reset-thread', { chatId }),
+  runBackgroundResearch: (payload) => ipcRenderer.invoke('research:run-background', payload),
   runResearch: (payload) => ipcRenderer.invoke('research:run', payload),
   onResearchEvent: (callback) => {
     const listener = (_, payload) => callback(payload)

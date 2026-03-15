@@ -10,6 +10,8 @@ export default function TranscriptionDebug({
   lastTranscriptionActivityAt,
   screenshotStatus,
   lastScreenshotAt,
+  lastAnalysisAt,
+  monitorLogs = [],
   transcriptionWarning,
   transcriptionError,
   isMac,
@@ -43,6 +45,21 @@ export default function TranscriptionDebug({
         <div className="truncate">User ({transcriptKinds.user}): {latestTranscripts.user || '...'}</div>
         <div>Last activity: {lastTranscriptionActivityAt ? new Date(lastTranscriptionActivityAt).toLocaleTimeString() : 'n/a'}</div>
         <div>Screenshot: {screenshotStatus}{lastScreenshotAt ? ` @ ${lastScreenshotAt}` : ''}</div>
+        <div>Last monitor verdict: {lastAnalysisAt || 'n/a'}</div>
+        <div className="mt-2 rounded-lg border p-2" style={{ borderColor: 'rgba(255, 132, 198, 0.18)', background: 'rgba(8, 11, 17, 0.45)' }}>
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide" style={{ color: PINK_LIGHT }}>
+            Monitor Progress
+          </div>
+          <div className="max-h-24 overflow-y-auto space-y-1 text-[10px] leading-4" style={{ color: 'rgba(226, 233, 255, 0.82)' }}>
+            {monitorLogs.length > 0 ? monitorLogs.map((entry) => (
+              <div key={entry.id} className="break-words">
+                <span style={{ color: 'rgba(255, 184, 222, 0.9)' }}>{entry.at}</span>
+                {' · '}
+                <span>{entry.message}</span>
+              </div>
+            )) : <div>No monitor activity yet.</div>}
+          </div>
+        </div>
         {isMac && (
           <div style={{ color: '#fbbf24' }}>
             macOS: if desktop audio is silent, verify Screen Recording + system audio permissions.

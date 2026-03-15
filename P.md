@@ -1,12 +1,7 @@
-now we need to be able to monitor calls.
+now, we need to constantly monitor the user to make sure that the user is safe always.
 
-so we will be using the live transcription from deepgram, the docs can be found here: /Users/q/Desktop/projects/TD-Hackathon-Fraud-Detection/docs/deepgram
+so in the background, there will be a loop, a constant loop of screenshot -> analysis. what will happen is when a scam is detected, then a notification will open and also create a new chat. when the user clicks on the notification, it will automatically show the analysis + debrief's chat. so basically on scam/fraud detected, it will have a title + quick debrief, which the user will get to ask further questions about it.
 
-so that means we will need to capture audio from both the desktop AND the microphone. this NEEDS to work on BOTH windows and macos.
+make this loop run every 3 seconds. 
 
-for desktop capture:
-https://www.electronjs.org/docs/latest/api/desktop-capturer#caveats
-
-in the settings, we should be able to enable permission to record audio and take screenshots. so we should be able to also capture screenshots of the screen.
-
-only add the trancsription and a small debug menu on the side to show that it's working, then we will move onto the fraud detection later.
+so basically its like the alt+del, but its in the background looping and continues to loop until a fraud is detected, and keeps updating the user as long as the fraud is still VISIBLE and as the fraud/scam progresses.

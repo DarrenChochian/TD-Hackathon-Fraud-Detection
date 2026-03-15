@@ -55,6 +55,79 @@ export function buildSuspiciousScanPrompt({ screenshotResult, callerTranscript, 
   ].join('\n')
 }
 
+export function buildBackgroundMonitorPrompt({ screenshotResult, callerTranscript, userTranscript, activeIncident }) {
+  const caller = String(callerTranscript || '').trim() || '(no caller transcript yet)'
+  const user = String(userTranscript || '').trim() || '(no user transcript yet)'
+  const capturedAt = new Date().toISOString()
+  const screenshotName = String(screenshotResult?.filePath || '')
+    .split(/[/\\]/)
+    .filter(Boolean)
+    .pop() || 'screenshot.png'
+
+  const activeIncidentContext = activeIncident
+    ? [
+        'Current active incident context:',
+        `- Chat ID: ${activeIncident.chatId}`,
+        `- Prior title: ${activeIncident.title || '(none)'}`,
+        `- Prior fingerprint: ${activeIncident.fingerprint || '(none)'}`,
+        `- Prior risk level: ${activeIncident.riskLevel || '(unknown)'}`,
+        `- Prior quick debrief: ${activeIncident.quickDebrief || '(none)'}`,
+      ].join('\n')
+    : 'There is no currently active suspicious incident.'
+
+  return [
+    'You are running a background fraud-monitoring scan for the currently visible screen.',
+    'A screenshot image is attached to this message. Use it as the primary evidence.',
+    `Screenshot captured at: ${capturedAt}`,
+    `Attached screenshot filename: ${screenshotName}`,
+    `Screenshot size: ${screenshotResult.width}x${screenshotResult.height}`,
+    '',
+    'Decide whether the currently visible content indicates a live scam/fraud incident.',
+    'If suspicious content is visible, determine whether it appears to be the same incident as the prior active incident or a new unique incident.',
+    'Only treat this as suspicious when the visible evidence supports it.',
+    'Only mark meaningfulChange=true when the user should receive a new incident update.',
+    '',
+    activeIncidentContext,
+    '',
+    'Transcript context:',
+    `- Caller: ${caller}`,
+    `- User: ${user}`,
+    '',
+    'Return two things:',
+    '1) A very short user-facing markdown analysis for background monitoring.',
+    '   - Keep it under 35 words.',
+    '   - No headings, no section titles, no long explanations.',
+    '   - Prefer one sentence or two very short bullets.',
+    '   - Put the real verdict in the JSON block below.',
+    '   - If deeper research is needed, you may still use tools, but the final visible text must stay short.',
+    '2) A fenced code block labeled fraud-monitor containing valid JSON with exactly these keys:',
+    '   - status: "safe" | "suspicious"',
+    '   - riskLevel: "low" | "medium" | "high"',
+    '   - incidentTitle: short title for the incident, or empty string if safe',
+    '   - quickDebrief: 1-2 sentence summary for notification/chat preview, or empty string if safe',
+    '   - fingerprint: stable short identifier for the visible incident/entity if possible, else empty string',
+    '   - sameIncidentAsPrevious: true | false',
+    '   - meaningfulChange: true | false',
+    '',
+    'The JSON block must look like:',
+    '```fraud-monitor',
+    '{',
+    '  "status": "suspicious",',
+    '  "riskLevel": "high",',
+    '  "incidentTitle": "Fake TD Bank login page",',
+    '  "quickDebrief": "The page is requesting banking credentials on a suspicious domain.",',
+    '  "fingerprint": "fake-td-login",',
+    '  "sameIncidentAsPrevious": false,',
+    '  "meaningfulChange": true',
+    '}',
+    '```',
+    '',
+    'Example visible text:',
+    '- Suspicious: TD impersonation over Discord asking for credit card details. Do not reply or share any information.',
+    '- Safe: No clear scam indicators visible in this screenshot.',
+  ].join('\n')
+}
+
 export function statusStyles(status) {
   if (status === 'success') {
     return {

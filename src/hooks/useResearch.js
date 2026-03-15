@@ -122,11 +122,11 @@ export function useResearch() {
     })
   }
 
-  const ensureChat = async (chatId) => {
+  const ensureChat = async (chatId, options = {}) => {
     const normalizedChatId = String(chatId || '').trim()
     if (!normalizedChatId || !window.electronAPI?.ensureResearchChat) return null
 
-    const chat = await window.electronAPI.ensureResearchChat(normalizedChatId)
+    const chat = await window.electronAPI.ensureResearchChat(normalizedChatId, options?.title)
     upsertChat(chat)
     setChatMessages((prev) => ({
       ...prev,
@@ -135,15 +135,67 @@ export function useResearch() {
     return chat
   }
 
-  const createAnalysisChat = async () => {
+  const createAnalysisChat = async (options = {}) => {
     if (!window.electronAPI?.createAnalysisResearchChat) return null
 
-    const chat = await window.electronAPI.createAnalysisResearchChat()
+    const chat = await window.electronAPI.createAnalysisResearchChat(options?.title)
     upsertChat(chat)
     setChatMessages((prev) => ({
       ...prev,
       [chat.id]: prev[chat.id] || initialMessagesForChat(chat.id),
     }))
+    return chat
+  }
+
+  const setChatTitle = async (chatId, title) => {
+    const normalizedChatId = String(chatId || '').trim()
+    const normalizedTitle = String(title || '').trim()
+    if (!normalizedChatId || !normalizedTitle || !window.electronAPI?.setResearchChatTitle) return null
+
+    const chat = await window.electronAPI.setResearchChatTitle(normalizedChatId, normalizedTitle).catch(() => null)
+    if (chat) {
+      upsertChat(chat)
+    }
+    return chat
+  }
+
+  const appendStoredAssistantMessage = async ({ chatId, text, prompt = '' }) => {
+    const normalizedChatId = String(chatId || '').trim()
+    const response = String(text || '').trim()
+    if (!normalizedChatId || !response) return null
+
+    await ensureChat(normalizedChatId)
+
+    if (window.electronAPI?.appendResearchEntry) {
+      const nextChat = await window.electronAPI.appendResearchEntry({
+        chatId: normalizedChatId,
+        prompt,
+        response,
+      }).catch(() => null)
+      if (nextChat) {
+        upsertChat(nextChat)
+      }
+    }
+
+    appendMessage(normalizedChatId, {
+      id: createMessageId('assistant'),
+      type: 'text',
+      role: 'assistant',
+      text: response,
+    })
+
+    return true
+  }
+
+  const importRunToChat = async ({ chatId, run }) => {
+    const normalizedChatId = String(chatId || '').trim()
+    if (!normalizedChatId || !run || typeof run !== 'object' || !window.electronAPI?.importResearchRun) return null
+
+    const chat = await window.electronAPI.importResearchRun({ chatId: normalizedChatId, run }).catch(() => null)
+    if (chat) {
+      upsertChat(chat)
+      await refreshChats().catch(() => {})
+    }
     return chat
   }
 
@@ -163,9 +215,10 @@ export function useResearch() {
     }))
   }
 
-  const runResearchPrompt = async ({ chatId, text, resetThread = false, replaceChatMessages = false, attachmentFilePaths = [] }) => {
+  const runResearchPrompt = async ({ chatId, text, displayText = '', resetThread = false, replaceChatMessages = false, attachmentFilePaths = [] }) => {
     const normalizedChatId = String(chatId || '').trim()
     const prompt = String(text || '').trim()
+    const visiblePrompt = String(displayText || text || '').trim()
     if (!normalizedChatId || !prompt || runningByChatRef.current[normalizedChatId]) return false
 
     await ensureChat(normalizedChatId)
@@ -177,12 +230,14 @@ export function useResearch() {
       }))
     }
 
-    appendMessage(normalizedChatId, {
-      id: createMessageId('user'),
-      type: 'text',
-      role: 'user',
-      text: prompt,
-    })
+    if (visiblePrompt) {
+      appendMessage(normalizedChatId, {
+        id: createMessageId('user'),
+        type: 'text',
+        role: 'user',
+        text: visiblePrompt,
+      })
+    }
 
     if (!window.electronAPI?.runResearch) {
       appendMessage(normalizedChatId, {
@@ -204,12 +259,12 @@ export function useResearch() {
         await window.electronAPI?.resetResearchThread?.(normalizedChatId)
       }
 
-      await window.electronAPI.runResearch({
+      const result = await window.electronAPI.runResearch({
         chatId: normalizedChatId,
         prompt,
         attachmentFilePaths,
       })
-      return true
+      return result
     } catch {
       setRunningByChat((prev) => {
         const next = { ...prev }
@@ -223,6 +278,7 @@ export function useResearch() {
   useEffect(() => {
     const unsubscribe = window.electronAPI?.onResearchEvent?.((payload) => {
       const chatId = String(payload?.chatId || '').trim()
+      const isBackgroundEvent = Boolean(payload?.background)
       if (!chatId) return
 
       if (payload.type === 'tool_call_started' || payload.type === 'tool_call_finished') {
@@ -276,11 +332,13 @@ export function useResearch() {
             text: payload.summary,
           })
         }
-        setRunningByChat((prev) => {
-          const next = { ...prev }
-          delete next[chatId]
-          return next
-        })
+        if (!isBackgroundEvent) {
+          setRunningByChat((prev) => {
+            const next = { ...prev }
+            delete next[chatId]
+            return next
+          })
+        }
         refreshChats().catch((error) => console.error('Failed to refresh research chats:', error))
       } else if (payload.type === 'error') {
         appendMessage(chatId, {
@@ -289,11 +347,13 @@ export function useResearch() {
           role: 'assistant',
           text: `Research failed: ${payload.message || 'Unknown error'}`,
         })
-        setRunningByChat((prev) => {
-          const next = { ...prev }
-          delete next[chatId]
-          return next
-        })
+        if (!isBackgroundEvent) {
+          setRunningByChat((prev) => {
+            const next = { ...prev }
+            delete next[chatId]
+            return next
+          })
+        }
         refreshChats().catch((error) => console.error('Failed to refresh research chats:', error))
       }
     })
@@ -312,9 +372,12 @@ export function useResearch() {
     runningByChat,
     runningByChatRef,
     appendMessage,
+    appendStoredAssistantMessage,
+    importRunToChat,
     toggleToolCard,
     ensureChat,
     createAnalysisChat,
+    setChatTitle,
     runResearchPrompt,
   }
 }

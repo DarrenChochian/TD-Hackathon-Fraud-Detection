@@ -10,6 +10,10 @@ function createChatHistoryStore({ projectRoot }) {
     fs.mkdirSync(storageDir, { recursive: true })
   }
 
+  function normalizeTitle(value) {
+    return String(value || '').trim()
+  }
+
   function historyPathForChat(chatId) {
     return path.join(storageDir, `${CHAT_HISTORY_PREFIX}${chatId}${CHAT_HISTORY_SUFFIX}`)
   }
@@ -45,10 +49,11 @@ function createChatHistoryStore({ projectRoot }) {
     const lastEntry = history[history.length - 1] || null
     const createdAt = firstEntry?.timestamp || fileStats?.birthtime?.toISOString?.() || fileStats?.mtime?.toISOString?.() || null
     const updatedAt = lastEntry?.updatedAt || lastEntry?.completedAt || lastEntry?.timestamp || fileStats?.mtime?.toISOString?.() || createdAt
+    const storedTitle = history.find((entry) => normalizeTitle(entry?.chatTitle))?.chatTitle
 
     return {
       id: chatId,
-      title: prettifyChatId(chatId),
+      title: normalizeTitle(storedTitle) || prettifyChatId(chatId),
       createdAt,
       updatedAt,
     }
@@ -96,16 +101,30 @@ function createChatHistoryStore({ projectRoot }) {
     }
   }
 
-  function ensureChat(chatId) {
+  function ensureChat(chatId, options = {}) {
+    const chatTitle = normalizeTitle(options?.title)
     ensureStorageDir()
     if (!isExistingChatId(chatId)) {
       fs.writeFileSync(historyPathForChat(chatId), JSON.stringify([], null, 2), 'utf8')
     }
 
+    if (chatTitle) {
+      const history = load(chatId)
+      if (history.length === 0) {
+        save(chatId, [{ timestamp: new Date().toISOString(), chatTitle }])
+      } else if (!normalizeTitle(history[0]?.chatTitle)) {
+        history[0] = {
+          ...history[0],
+          chatTitle,
+        }
+        save(chatId, history)
+      }
+    }
+
     return describeChat(chatId)
   }
 
-  function createAnalysisChat() {
+  function createAnalysisChat(options = {}) {
     ensureStorageDir()
 
     let chatId = `analysis-${Date.now()}`
@@ -115,7 +134,29 @@ function createChatHistoryStore({ projectRoot }) {
       attempt += 1
     }
 
-    return ensureChat(chatId)
+    return ensureChat(chatId, options)
+  }
+
+  function setChatTitle(chatId, title) {
+    const normalizedTitle = normalizeTitle(title)
+    if (!chatId || !normalizedTitle) {
+      return describeChat(chatId)
+    }
+
+    ensureChat(chatId)
+    const history = load(chatId)
+
+    if (history.length === 0) {
+      history.push({ timestamp: new Date().toISOString(), chatTitle: normalizedTitle })
+    } else {
+      history[0] = {
+        ...history[0],
+        chatTitle: normalizedTitle,
+      }
+    }
+
+    save(chatId, history)
+    return describeChat(chatId)
   }
 
   function startRun({ chatId, runId, prompt }) {
@@ -235,7 +276,31 @@ function createChatHistoryStore({ projectRoot }) {
     save(chatId, history)
   }
 
-  return { load, append, ensureChat, listChats, createAnalysisChat, startRun, recordToolCall, completeRun, failRun }
+  function importRun({ chatId, run }) {
+    ensureChat(chatId)
+    const history = load(chatId)
+    const normalizedRunId = String(run?.runId || '').trim()
+
+    if (!normalizedRunId) {
+      throw new Error('runId is required')
+    }
+
+    upsertRun(history, normalizedRunId, (existing) => ({
+      timestamp: String(run?.timestamp || existing?.timestamp || new Date().toISOString()),
+      updatedAt: String(run?.updatedAt || existing?.updatedAt || new Date().toISOString()),
+      completedAt: String(run?.completedAt || existing?.completedAt || run?.updatedAt || new Date().toISOString()),
+      runId: normalizedRunId,
+      prompt: String(run?.prompt || existing?.prompt || ''),
+      response: String(run?.response || existing?.response || ''),
+      error: String(run?.error || existing?.error || ''),
+      toolCalls: Array.isArray(run?.toolCalls) ? run.toolCalls.map((toolCall) => normalizeToolCall(toolCall)) : (Array.isArray(existing?.toolCalls) ? existing.toolCalls : []),
+    }))
+
+    save(chatId, history)
+    return describeChat(chatId)
+  }
+
+  return { load, append, importRun, ensureChat, listChats, createAnalysisChat, setChatTitle, startRun, recordToolCall, completeRun, failRun }
 }
 
 module.exports = { createChatHistoryStore }
