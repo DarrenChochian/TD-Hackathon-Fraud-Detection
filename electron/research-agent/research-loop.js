@@ -21,6 +21,12 @@ function createResearchLoop({ config, backboardClient, jinaClient, sessionStore,
     return error.message.includes('Backboard API error (404)') && /assistant not found/i.test(error.message)
   }
 
+  function isToolResultMismatchError(error) {
+    if (!(error instanceof Error)) return false
+    const message = error.message || ''
+    return /tool_use ids were found without tool_result blocks/i.test(message)
+  }
+
   function readSystemPrompt() {
     return fs.readFileSync(systemPromptPath, 'utf8')
   }
@@ -210,20 +216,88 @@ function createResearchLoop({ config, backboardClient, jinaClient, sessionStore,
   }
 
   async function runToolEnabledConversation({ chatId, prompt, onEvent, attachmentFilePaths = [] }) {
+    async function resolveRequiredActions({ initialResponse, onSummary }) {
+      let normalized = initialResponse
+
+      while (normalized.status === 'REQUIRES_ACTION' && normalized.toolCalls.length > 0) {
+        onEvent({
+          type: 'progress',
+          message: `Executing ${normalized.toolCalls.length} tool call(s)...`,
+        })
+
+        const toolOutputs = await executeToolCalls(normalized.toolCalls, {
+          jinaClient,
+          onProgress: onEvent,
+          onSummary,
+          onToolLifecycle: onEvent,
+        })
+
+        normalized = backboardClient.normalizeMessageResponse(
+          await backboardClient.submitToolOutputs({
+            threadId: session.threadId,
+            runId: normalized.runId,
+            toolOutputs,
+          }),
+        )
+      }
+
+      return normalized
+    }
+
+    async function addMessageWithKeepAliveRecovery({ content, files = [] }) {
+      const requestPayload = {
+        threadId: session.threadId,
+        content,
+        llmProvider: config.backboardProvider,
+        modelName: config.backboardModel,
+        attachmentFilePaths: files,
+      }
+
+      try {
+        return backboardClient.normalizeMessageResponse(await backboardClient.addMessage(requestPayload))
+      } catch (error) {
+        if (!isToolResultMismatchError(error)) {
+          throw error
+        }
+
+        onEvent({
+          type: 'progress',
+          message: 'Tool-result mismatch detected. Sending keep alive and continuing...',
+        })
+
+        const keepAliveResponse = backboardClient.normalizeMessageResponse(
+          await backboardClient.addMessage({
+            threadId: session.threadId,
+            content: 'keep alive',
+            llmProvider: config.backboardProvider,
+            modelName: config.backboardModel,
+            attachmentFilePaths: [],
+          }),
+        )
+
+        await resolveRequiredActions({
+          initialResponse: keepAliveResponse,
+          onSummary: () => {},
+        })
+
+        onEvent({
+          type: 'progress',
+          message: 'Keep alive processed. Retrying original prompt...',
+        })
+
+        return backboardClient.normalizeMessageResponse(await backboardClient.addMessage(requestPayload))
+      }
+    }
+
     let session = await ensureThreadForChat({ chatId, onEvent })
     onEvent({ type: 'progress', message: 'Submitting prompt to research agent...' })
 
     let normalized
     try {
-      normalized = backboardClient.normalizeMessageResponse(
-        await backboardClient.addMessage({
-          threadId: session.threadId,
-          content: prompt,
-          llmProvider: config.backboardProvider,
-          modelName: config.backboardModel,
-          attachmentFilePaths,
-        }),
-      )
+      normalized = await addMessageWithKeepAliveRecovery({
+        content: prompt,
+        files: attachmentFilePaths,
+      })
     } catch (error) {
       if (!isThreadNotFoundError(error)) {
         throw error
@@ -233,42 +307,19 @@ function createResearchLoop({ config, backboardClient, jinaClient, sessionStore,
       clearThreadForChat(chatId)
       session = await ensureThreadForChat({ chatId, onEvent })
 
-      normalized = backboardClient.normalizeMessageResponse(
-        await backboardClient.addMessage({
-          threadId: session.threadId,
-          content: prompt,
-          llmProvider: config.backboardProvider,
-          modelName: config.backboardModel,
-          attachmentFilePaths,
-        }),
-      )
+      normalized = await addMessageWithKeepAliveRecovery({
+        content: prompt,
+        files: attachmentFilePaths,
+      })
     }
 
     let finalSummary = ''
-
-    while (normalized.status === 'REQUIRES_ACTION' && normalized.toolCalls.length > 0) {
-      onEvent({
-        type: 'progress',
-        message: `Executing ${normalized.toolCalls.length} tool call(s)...`,
-      })
-
-      const toolOutputs = await executeToolCalls(normalized.toolCalls, {
-        jinaClient,
-        onProgress: onEvent,
-        onSummary: (summary) => {
-          finalSummary = summary
-        },
-        onToolLifecycle: onEvent,
-      })
-
-      normalized = backboardClient.normalizeMessageResponse(
-        await backboardClient.submitToolOutputs({
-          threadId: session.threadId,
-          runId: normalized.runId,
-          toolOutputs,
-        }),
-      )
-    }
+    normalized = await resolveRequiredActions({
+      initialResponse: normalized,
+      onSummary: (summary) => {
+        finalSummary = summary
+      },
+    })
 
     return {
       summary: finalSummary || normalized.content || '',
