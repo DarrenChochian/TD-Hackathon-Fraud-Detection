@@ -79,7 +79,7 @@ function createBackboardClient({ apiKey, baseUrl }) {
       })
     },
 
-    async addMessage({ threadId, content, llmProvider, modelName, attachmentFilePaths = [] }) {
+    async addMessage({ threadId, content, llmProvider, modelName, attachmentFilePaths = [], sendToLlm = true }) {
       const formData = new FormData()
       if (typeof content === 'string' && content.length > 0) {
         formData.set('content', content)
@@ -87,6 +87,7 @@ function createBackboardClient({ apiKey, baseUrl }) {
       formData.set('stream', 'false')
       formData.set('memory', 'off')
       formData.set('web_search', 'off')
+      formData.set('send_to_llm', sendToLlm ? 'true' : 'false')
       formData.set('llm_provider', llmProvider)
       formData.set('model_name', modelName)
 

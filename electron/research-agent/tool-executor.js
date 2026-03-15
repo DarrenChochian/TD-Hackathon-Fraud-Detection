@@ -15,7 +15,7 @@ function parseArguments(toolCall) {
 }
 
 function getToolCallId(toolCall) {
-  return toolCall?.id || toolCall?.tool_call_id || ''
+  return toolCall?.tool_call_id || toolCall?.tool_use_id || toolCall?.toolUseId || toolCall?.id || ''
 }
 
 function truncate(value, max = 180) {

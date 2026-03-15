@@ -378,6 +378,7 @@ export default function App() {
   const callerSilentSinceRef = useRef(null)
   const runningByChatRef = useRef({})
   const latestTranscriptsRef = useRef({ caller: '', user: '' })
+  const suspiciousScanInFlightRef = useRef(false)
   const suspiciousScanHandlerRef = useRef(async () => {})
   const mediaCaptureRef = useRef({
     micStream: null,
@@ -773,6 +774,22 @@ export default function App() {
     }
   }
 
+  const setChatRunning = (chatId, isRunning) => {
+    const normalizedChatId = String(chatId || '').trim()
+    if (!normalizedChatId) return
+
+    setRunningByChat((prev) => {
+      const next = { ...prev }
+      if (isRunning) {
+        next[normalizedChatId] = true
+      } else {
+        delete next[normalizedChatId]
+      }
+      runningByChatRef.current = next
+      return next
+    })
+  }
+
   const runResearchPrompt = async ({ chatId, text, resetThread = false, replaceChatMessages = false, attachmentFilePaths = [] }) => {
     const normalizedChatId = String(chatId || '').trim()
     const prompt = String(text || '').trim()
@@ -802,10 +819,7 @@ export default function App() {
       return false
     }
 
-    setRunningByChat((prev) => ({
-      ...prev,
-      [normalizedChatId]: true,
-    }))
+    setChatRunning(normalizedChatId, true)
 
     try {
       if (resetThread) {
@@ -819,37 +833,38 @@ export default function App() {
       })
       return true
     } catch {
-      setRunningByChat((prev) => {
-        const next = { ...prev }
-        delete next[normalizedChatId]
-        return next
-      })
+      setChatRunning(normalizedChatId, false)
       return false
     }
   }
 
   const handleSuspiciousScanHotkey = async () => {
-    if (runningByChatRef.current[SUSPICIOUS_SCAN_CHAT_ID]) return
+    if (suspiciousScanInFlightRef.current || runningByChatRef.current[SUSPICIOUS_SCAN_CHAT_ID]) return
 
-    setModalOpen(true)
-    setSelectedChatId(SUSPICIOUS_SCAN_CHAT_ID)
+    suspiciousScanInFlightRef.current = true
+    try {
+      setModalOpen(true)
+      setSelectedChatId(SUSPICIOUS_SCAN_CHAT_ID)
 
-    const screenshotResult = await captureScreenshot()
-    if (!screenshotResult?.ok) return
+      const screenshotResult = await captureScreenshot()
+      if (!screenshotResult?.ok) return
 
-    const prompt = buildSuspiciousScanPrompt({
-      screenshotResult,
-      callerTranscript: latestTranscriptsRef.current.caller,
-      userTranscript: latestTranscriptsRef.current.user,
-    })
+      const prompt = buildSuspiciousScanPrompt({
+        screenshotResult,
+        callerTranscript: latestTranscriptsRef.current.caller,
+        userTranscript: latestTranscriptsRef.current.user,
+      })
 
-    await runResearchPrompt({
-      chatId: SUSPICIOUS_SCAN_CHAT_ID,
-      text: prompt,
-      resetThread: true,
-      replaceChatMessages: true,
-      attachmentFilePaths: [screenshotResult.filePath],
-    })
+      await runResearchPrompt({
+        chatId: SUSPICIOUS_SCAN_CHAT_ID,
+        text: prompt,
+        resetThread: true,
+        replaceChatMessages: true,
+        attachmentFilePaths: [screenshotResult.filePath],
+      })
+    } finally {
+      suspiciousScanInFlightRef.current = false
+    }
   }
 
   suspiciousScanHandlerRef.current = handleSuspiciousScanHotkey
@@ -1016,11 +1031,7 @@ export default function App() {
             text: payload.summary,
           })
         }
-        setRunningByChat((prev) => {
-          const next = { ...prev }
-          delete next[chatId]
-          return next
-        })
+        setChatRunning(chatId, false)
       } else if (payload.type === 'error') {
         appendMessage(chatId, {
           id: createMessageId('error'),
@@ -1028,11 +1039,7 @@ export default function App() {
           role: 'assistant',
           text: `Research failed: ${payload.message || 'Unknown error'}`,
         })
-        setRunningByChat((prev) => {
-          const next = { ...prev }
-          delete next[chatId]
-          return next
-        })
+        setChatRunning(chatId, false)
       }
     })
 
