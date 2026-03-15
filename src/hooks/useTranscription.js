@@ -1,0 +1,130 @@
+import { useState, useEffect, useRef } from 'react'
+
+export function useTranscription({ onStopSession, sourceAudioLevels, isListening }) {
+  const [transcriptionSessionState, setTranscriptionSessionState] = useState('idle')
+  const [sourceStates, setSourceStates] = useState({ caller: 'idle', user: 'idle' })
+  const [sourceChunkCounts, setSourceChunkCounts] = useState({ caller: 0, user: 0 })
+  const [latestTranscripts, setLatestTranscripts] = useState({ caller: '', user: '' })
+  const [transcriptKinds, setTranscriptKinds] = useState({ caller: 'none', user: 'none' })
+  const [transcriptionError, setTranscriptionError] = useState('')
+  const [transcriptionWarning, setTranscriptionWarning] = useState('')
+  const [lastTranscriptionActivityAt, setLastTranscriptionActivityAt] = useState('')
+  const callerSilentSinceRef = useRef(null)
+
+  useEffect(() => {
+    if (!isListening) {
+      callerSilentSinceRef.current = null
+      return
+    }
+
+    if ((sourceAudioLevels.caller || 0) > 0.5) {
+      callerSilentSinceRef.current = null
+      return
+    }
+
+    if (!callerSilentSinceRef.current) {
+      callerSilentSinceRef.current = Date.now()
+      return
+    }
+
+    const silentMs = Date.now() - callerSilentSinceRef.current
+    if (silentMs < 8000) return
+
+    const warning = 'Desktop audio stream is connected but appears silent. Confirm system audio is shared in the screen picker and macOS Screen Recording/System Audio permissions are granted.'
+    setTranscriptionWarning((prev) => (prev?.includes('appears silent') ? prev : (prev ? `${prev} ${warning}` : warning)))
+  }, [isListening, sourceAudioLevels.caller])
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.onTranscriptionEvent?.((payload) => {
+      if (!payload || typeof payload !== 'object') return
+
+      if (payload.type === 'session_state') {
+        if (payload.state === 'error') {
+          console.error('[transcription][session]', payload)
+        } else {
+          console.log('[transcription][session]', payload)
+        }
+        setTranscriptionSessionState(payload.state || 'idle')
+        if (payload.state === 'error' && payload.message) {
+          setTranscriptionError(payload.message)
+        }
+      }
+
+      if (payload.type === 'source_state' && payload.source) {
+        if (payload.state === 'error') {
+          console.error(`[transcription][${payload.source}]`, payload)
+        } else if (payload.state === 'reconnecting' || payload.state === 'closed') {
+          console.warn(`[transcription][${payload.source}]`, payload)
+        } else {
+          console.log(`[transcription][${payload.source}]`, payload)
+        }
+        setSourceStates((prev) => ({
+          ...prev,
+          [payload.source]: payload.state || 'idle',
+        }))
+
+        if (payload.state === 'error' && payload.message) {
+          setTranscriptionError(payload.message)
+        }
+      }
+
+      if (payload.type === 'source_chunk' && payload.source) {
+        setSourceChunkCounts((prev) => ({
+          ...prev,
+          [payload.source]: Number(payload.count || 0),
+        }))
+      }
+
+      if (payload.type === 'transcript' && payload.source) {
+        setLatestTranscripts((prev) => ({
+          ...prev,
+          [payload.source]: payload.transcript || '(silence)',
+        }))
+        setTranscriptKinds((prev) => ({
+          ...prev,
+          [payload.source]: payload.isFinal ? 'final' : 'interim',
+        }))
+      }
+
+      setLastTranscriptionActivityAt(payload.ts || new Date().toISOString())
+    })
+
+    return () => {
+      unsubscribe?.()
+    }
+  }, [])
+
+  const resetTranscriptionState = () => {
+    setTranscriptionError('')
+    setTranscriptionWarning('')
+    setTranscriptionSessionState('connecting')
+    setSourceStates({ caller: 'connecting', user: 'connecting' })
+    setSourceChunkCounts({ caller: 0, user: 0 })
+    setLatestTranscripts({ caller: '', user: '' })
+    setTranscriptKinds({ caller: 'none', user: 'none' })
+  }
+
+  const updateSourceStates = (updates) => {
+    setSourceStates((prev) => ({ ...prev, ...updates }))
+  }
+
+  const updateTranscriptionWarning = (warning) => {
+    setTranscriptionWarning((prev) => (prev ? `${prev} ${warning}` : warning))
+  }
+
+  return {
+    transcriptionSessionState,
+    setTranscriptionSessionState,
+    sourceStates,
+    setSourceStates: updateSourceStates,
+    sourceChunkCounts,
+    latestTranscripts,
+    transcriptKinds,
+    transcriptionError,
+    setTranscriptionError,
+    transcriptionWarning,
+    setTranscriptionWarning: updateTranscriptionWarning,
+    lastTranscriptionActivityAt,
+    resetTranscriptionState,
+  }
+}
