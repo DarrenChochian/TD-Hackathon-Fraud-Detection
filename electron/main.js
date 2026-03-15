@@ -263,12 +263,6 @@ function createWindow() {
 let currentSettingsAccelerator = 'Alt+K'
 let currentMainPanelAccelerator = 'Alt+L'
 
-// On macOS, Option+L (Alt+L) is intercepted by some IME/keyboard configurations
-// before Electron can claim it. Provide a fallback chain specific to the platform.
-const MACOS_FALLBACKS = {
-  'Alt+L': ['Alt+Shift+L', 'Command+Shift+L'],
-}
-
 function tryRegister(accelerator, handler) {
   const ok = globalShortcut.register(accelerator, handler)
   console.log(`[hotkeys] register(${accelerator}) → ${ok ? 'OK' : 'FAILED'}`)
@@ -307,9 +301,7 @@ function registerAllHotkeys() {
   )
   if (settingsResult.ok) currentSettingsAccelerator = settingsResult.registered
 
-  const macFallbacks = process.platform === 'darwin'
-    ? (MACOS_FALLBACKS[currentMainPanelAccelerator] ?? ['Alt+Shift+L', 'Command+Shift+L'])
-    : []
+  const macFallbacks = []
     
   const mainPanelResult = tryRegisterWithFallbacks(
     currentMainPanelAccelerator,

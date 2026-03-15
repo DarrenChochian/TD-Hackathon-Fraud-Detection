@@ -3,144 +3,9 @@ const path = require('path')
 const crypto = require('crypto')
 const { RESEARCH_TOOLS } = require('./tool-schema')
 const { executeToolCalls } = require('./tool-executor')
+const { buildAttachmentContext } = require('./attachment-context')
 
-const ATTACHMENT_SAFE_SYSTEM_PROMPT = [
-  'You are FRAUDLY, a scam prevention agent.',
-  'Analyze the user request and any attached files/images using the attachments as primary evidence.',
-  'Do not call tools or rely on external web research in this mode.',
-  'Your job in this mode is to extract evidence from the attachment, not to give the final researched verdict.',
-  'Return concise markdown with only the facts you can support from the attachment.',
-  'Your output must prioritize exact text extraction from the screenshot over interpretation.',
-  'If a line of text is readable, preserve the wording closely and quote it.',
-  'Pay special attention to company names, bank names, brand names, abbreviations, and claims like "I am from TD", "this is TD", "from Amazon", or "from your bank".',
-  'Do not confuse the app or platform hosting the conversation with the company named inside the conversation.',
-  'Use this exact format:',
-  '## Visible Text',
-  '- Quote the most important readable lines from the screenshot.',
-  '## Claimed Company',
-  '- State the company or brand named in the conversation. If none is visible, say "Company not found".',
-  '## Platform',
-  '- State the platform hosting the conversation if visible.',
-  '## Red Flags Seen',
-  '- List requests for sensitive data, urgency, payment claims, links, phone numbers, or impersonation cues.',
-  '## Uncertainty',
-  '- Mention any text that was hard to read or ambiguous.',
-].join('\n')
-
-function extractClaimedCompany(summary) {
-  const text = String(summary || '')
-  if (!text.trim()) return ''
-
-  const claimedSectionMatch = text.match(/##\s*Claimed Company\s*\n([\s\S]*?)(?:\n##\s|$)/i)
-  if (claimedSectionMatch) {
-    const cleaned = claimedSectionMatch[1]
-      .replace(/^[\s*-]+/gm, '')
-      .replace(/Company not found.*$/im, '')
-      .trim()
-    if (cleaned) {
-      const firstLine = cleaned.split('\n').find((line) => line.trim())
-      if (firstLine) return firstLine.trim()
-    }
-  }
-
-  const patterns = [
-    /\b(?:i am|i'm|im)\s+from\s+([A-Z][A-Za-z0-9&.' -]{1,40})/i,
-    /\bfrom\s+([A-Z]{2,10})\b/,
-    /\bthis is\s+([A-Z][A-Za-z0-9&.' -]{1,40})/i,
-    /\brepresent(?:ing)?\s+([A-Z][A-Za-z0-9&.' -]{1,40})/i,
-  ]
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern)
-    if (!match?.[1]) continue
-    const candidate = match[1].trim().replace(/[.,:;!?]+$/, '')
-    if (!candidate || /^(discord|messenger|instagram|whatsapp|gmail|email|sms)$/i.test(candidate)) continue
-    return candidate
-  }
-
-  return ''
-}
-
-function buildAttachmentEvidenceMessage(summary) {
-  const normalizedSummary = String(summary || '').trim()
-  if (!normalizedSummary) return ''
-
-  return [
-    'Attachment analysis evidence:',
-    normalizedSummary,
-    '',
-    'Use the attachment analysis above as primary evidence for your answer.',
-    'You may use tools for additional verification or follow-up research if helpful.',
-  ].join('\n')
-}
-
-function buildAttachmentContextSeed({ originalPrompt, summary }) {
-  const evidenceMessage = buildAttachmentEvidenceMessage(summary)
-  return [
-    'Context from a prior attachment-based analysis.',
-    '',
-    'Original user request:',
-    String(originalPrompt || '').trim(),
-    '',
-    evidenceMessage,
-    '',
-    'Use this attachment evidence as the factual basis for any later tool-enabled research.',
-    'If a company is named in the evidence, compare the suspicious claims against the company\'s official fraud, support, and contact-policy pages.',
-  ].join('\n')
-}
-
-function buildAttachmentResearchPrompt({ originalPrompt, summary, claimedCompanyHint }) {
-  return [
-    'Use the prior attachment evidence already in the thread to answer this request.',
-    'Do not ask for the screenshot again.',
-    'If the screenshot is on a platform like Discord, Messenger, Instagram, email, or SMS, do not confuse the platform with the company being impersonated.',
-    'Prioritize the company the suspicious sender claims to represent or the company tied to the requested payment/account verification.',
-    claimedCompanyHint
-      ? `Most likely claimed company detected from the screenshot evidence: ${claimedCompanyHint}`
-      : 'No reliable claimed-company hint was extracted from the screenshot evidence.',
-    'If a company is named or strongly implied, research its official website and official fraud/contact/support policies before concluding.',
-    'Explicitly compare what the suspicious party said with what the company says it will or will not do.',
-    'If no company can be identified from the evidence, state "Company not found" and continue with general scam analysis only.',
-    '',
-    'Original request to fulfill:',
-    String(originalPrompt || '').trim(),
-    '',
-    'Attachment evidence summary:',
-    String(summary || '').trim() || '(no attachment evidence available)',
-  ].join('\n')
-}
-
-function sanitizeSummary(summary) {
-  let text = String(summary || '').trim()
-  if (!text) return ''
-
-  text = text.replace(/\r\n/g, '\n')
-
-  const lines = text.split('\n')
-  while (lines.length > 0) {
-    const lastLine = String(lines[lines.length - 1] || '').trim()
-    if (!lastLine) {
-      lines.pop()
-      continue
-    }
-
-    const looksDanglingMarkdown =
-      lastLine.length < 40 &&
-      (/\*\*$/.test(lastLine) ||
-        /^\*\*[^*]*\)?$/.test(lastLine) ||
-        /^[-*]\s*$/.test(lastLine) ||
-        /^[([{\-*_`]+$/.test(lastLine))
-
-    if (!looksDanglingMarkdown) break
-    lines.pop()
-  }
-
-  text = lines.join('\n').trim()
-  text = text.replace(/\*\*([^*\n]{0,40})$/, '$1').trim()
-  return text
-}
-
-function createResearchLoop({ config, backboardClient, jinaClient, sessionStore, projectRoot }) {
+function createResearchLoop({ config, backboardClient, jinaClient, sessionStore, projectRoot, userDataPath }) {
   const systemPromptPath = path.join(projectRoot, 'electron', 'research-agent', 'system-prompt.md')
   let assistantPromise = null
   const threadPromisesByChatId = new Map()
@@ -156,12 +21,14 @@ function createResearchLoop({ config, backboardClient, jinaClient, sessionStore,
     return error.message.includes('Backboard API error (404)') && /assistant not found/i.test(error.message)
   }
 
-  function readSystemPrompt() {
-    return fs.readFileSync(systemPromptPath, 'utf8')
+  function isToolResultMismatchError(error) {
+    if (!(error instanceof Error)) return false
+    const message = error.message || ''
+    return /[`'"]?tool_use[`'"]?\s+ids?.*without\s+[`'"]?tool_result[`'"]?\s+blocks/i.test(message)
   }
 
-  function shouldUseAttachmentSafeMode(attachmentFilePaths) {
-    return config.backboardProvider === 'anthropic' && Array.isArray(attachmentFilePaths) && attachmentFilePaths.length > 0
+  function readSystemPrompt() {
+    return fs.readFileSync(systemPromptPath, 'utf8')
   }
 
   function loadSession() {
@@ -348,63 +215,105 @@ function createResearchLoop({ config, backboardClient, jinaClient, sessionStore,
     }
   }
 
-  async function runAttachmentSafeAnalysis({ prompt, runId, onEvent, attachmentFilePaths }) {
-    onEvent({ type: 'progress', message: 'Using attachment-safe analysis mode...' })
+  async function runToolEnabledConversation({ chatId, prompt, onEvent, attachmentFilePaths = [] }) {
+    async function resolveRequiredActions({ initialResponse, onSummary }) {
+      let normalized = initialResponse
 
-    const assistant = await backboardClient.createAssistant({
-      name: 'Research Agent (Attachment-safe)',
-      systemPrompt: ATTACHMENT_SAFE_SYSTEM_PROMPT,
-      tools: [],
-    })
+      while (normalized.status === 'REQUIRES_ACTION' && normalized.toolCalls.length > 0) {
+        onEvent({
+          type: 'progress',
+          message: `Executing ${normalized.toolCalls.length} tool call(s)...`,
+        })
 
-    const thread = await backboardClient.createThread(assistant.assistant_id)
-    const normalized = backboardClient.normalizeMessageResponse(
-      await backboardClient.addMessage({
-        threadId: thread.thread_id,
-        content: prompt,
+        const toolOutputs = await executeToolCalls(normalized.toolCalls, {
+          jinaClient,
+          onProgress: onEvent,
+          onSummary,
+          onToolLifecycle: onEvent,
+        })
+
+        normalized = backboardClient.normalizeMessageResponse(
+          await backboardClient.submitToolOutputs({
+            threadId: session.threadId,
+            runId: normalized.runId,
+            toolOutputs,
+          }),
+        )
+      }
+
+      return normalized
+    }
+
+    async function addMessageWithKeepAliveRecovery({ content, files = [] }) {
+      const requestPayload = {
+        threadId: session.threadId,
+        content,
         llmProvider: config.backboardProvider,
         modelName: config.backboardModel,
-        attachmentFilePaths,
-      }),
-    )
+        attachmentFilePaths: files,
+      }
 
-    return {
-      runId,
-      summary: normalized.content || '',
-      threadId: thread.thread_id,
-      assistantId: assistant.assistant_id,
+      let attempt = 0
+      const maxRecoveryAttempts = 3
+
+      while (true) {
+        try {
+          return backboardClient.normalizeMessageResponse(await backboardClient.addMessage(requestPayload))
+        } catch (error) {
+          if (!isToolResultMismatchError(error) || attempt >= maxRecoveryAttempts) {
+            throw error
+          }
+
+          attempt += 1
+          onEvent({
+            type: 'progress',
+            message: `Tool-result mismatch detected (attempt ${attempt}/${maxRecoveryAttempts}). Sending keep alive and continuing...`,
+          })
+
+          let keepAliveResponse
+          try {
+            keepAliveResponse = backboardClient.normalizeMessageResponse(
+              await backboardClient.addMessage({
+                threadId: session.threadId,
+                content: 'keep alive',
+                llmProvider: config.backboardProvider,
+                modelName: config.backboardModel,
+                attachmentFilePaths: [],
+              }),
+            )
+          } catch (keepAliveError) {
+            if (isToolResultMismatchError(keepAliveError) && attempt < maxRecoveryAttempts) {
+              onEvent({
+                type: 'progress',
+                message: 'Keep alive hit the same mismatch. Retrying recovery...',
+              })
+              continue
+            }
+            throw keepAliveError
+          }
+
+          await resolveRequiredActions({
+            initialResponse: keepAliveResponse,
+            onSummary: () => {},
+          })
+
+          onEvent({
+            type: 'progress',
+            message: 'Keep alive processed. Retrying original prompt...',
+          })
+        }
+      }
     }
-  }
 
-  async function seedAttachmentContext({ chatId, originalPrompt, summary, onEvent }) {
-    const session = await ensureThreadForChat({ chatId, onEvent })
-    await backboardClient.addMessage({
-      threadId: session.threadId,
-      content: buildAttachmentContextSeed({ originalPrompt, summary }),
-      llmProvider: config.backboardProvider,
-      modelName: config.backboardModel,
-      attachmentFilePaths: [],
-      sendToLlm: false,
-    })
-
-    return session
-  }
-
-  async function runToolEnabledConversation({ chatId, prompt, onEvent }) {
     let session = await ensureThreadForChat({ chatId, onEvent })
     onEvent({ type: 'progress', message: 'Submitting prompt to research agent...' })
 
     let normalized
     try {
-      normalized = backboardClient.normalizeMessageResponse(
-        await backboardClient.addMessage({
-          threadId: session.threadId,
-          content: prompt,
-          llmProvider: config.backboardProvider,
-          modelName: config.backboardModel,
-          attachmentFilePaths: [],
-        }),
-      )
+      normalized = await addMessageWithKeepAliveRecovery({
+        content: prompt,
+        files: attachmentFilePaths,
+      })
     } catch (error) {
       if (!isThreadNotFoundError(error)) {
         throw error
@@ -414,42 +323,19 @@ function createResearchLoop({ config, backboardClient, jinaClient, sessionStore,
       clearThreadForChat(chatId)
       session = await ensureThreadForChat({ chatId, onEvent })
 
-      normalized = backboardClient.normalizeMessageResponse(
-        await backboardClient.addMessage({
-          threadId: session.threadId,
-          content: prompt,
-          llmProvider: config.backboardProvider,
-          modelName: config.backboardModel,
-          attachmentFilePaths: [],
-        }),
-      )
+      normalized = await addMessageWithKeepAliveRecovery({
+        content: prompt,
+        files: attachmentFilePaths,
+      })
     }
 
     let finalSummary = ''
-
-    while (normalized.status === 'REQUIRES_ACTION' && normalized.toolCalls.length > 0) {
-      onEvent({
-        type: 'progress',
-        message: `Executing ${normalized.toolCalls.length} tool call(s)...`,
-      })
-
-      const toolOutputs = await executeToolCalls(normalized.toolCalls, {
-        jinaClient,
-        onProgress: onEvent,
-        onSummary: (summary) => {
-          finalSummary = summary
-        },
-        onToolLifecycle: onEvent,
-      })
-
-      normalized = backboardClient.normalizeMessageResponse(
-        await backboardClient.submitToolOutputs({
-          threadId: session.threadId,
-          runId: normalized.runId,
-          toolOutputs,
-        }),
-      )
-    }
+    normalized = await resolveRequiredActions({
+      initialResponse: normalized,
+      onSummary: (summary) => {
+        finalSummary = summary
+      },
+    })
 
     return {
       summary: sanitizeSummary(finalSummary || normalized.content || ''),
@@ -469,44 +355,27 @@ function createResearchLoop({ config, backboardClient, jinaClient, sessionStore,
     }
 
     const runPromise = (async () => {
-      if (shouldUseAttachmentSafeMode(attachmentFilePaths)) {
-        const attachmentResult = await runAttachmentSafeAnalysis({
-          prompt,
-          runId,
-          onEvent,
+      let finalPrompt = prompt
+      const shouldInlineAttachmentContext = config.backboardProvider === 'anthropic' && attachmentFilePaths.length > 0
+
+      if (shouldInlineAttachmentContext) {
+        const attachmentContext = await buildAttachmentContext({
           attachmentFilePaths,
-        })
-        const claimedCompanyHint = extractClaimedCompany(attachmentResult.summary)
-
-        const seededSession = await seedAttachmentContext({
-          chatId: normalizedChatId,
-          originalPrompt: prompt,
-          summary: attachmentResult.summary,
+          projectRoot,
+          userDataPath,
           onEvent,
         })
 
-        const researchedResult = await runToolEnabledConversation({
-          chatId: normalizedChatId,
-          prompt: buildAttachmentResearchPrompt({
-            originalPrompt: prompt,
-            summary: attachmentResult.summary,
-            claimedCompanyHint,
-          }),
-          onEvent,
-        })
-
-        return {
-          runId,
-          summary: researchedResult.summary,
-          threadId: researchedResult.threadId || seededSession.threadId,
-          assistantId: researchedResult.assistantId || seededSession.assistantId,
+        if (attachmentContext) {
+          finalPrompt = `${prompt}\n\n${attachmentContext}`
         }
       }
 
       const conversationResult = await runToolEnabledConversation({
         chatId: normalizedChatId,
-        prompt,
+        prompt: finalPrompt,
         onEvent,
+        attachmentFilePaths: shouldInlineAttachmentContext ? [] : attachmentFilePaths,
       })
 
       return {

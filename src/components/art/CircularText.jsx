@@ -19,6 +19,7 @@ const getTransition = (duration, from) => ({
 });
 
 const SIZES = {
+  xs: { container: 'w-10 h-10', text: 'text-[8px]' },
   sm: { container: 'w-14 h-14', text: 'text-[10px]' },
   md: { container: 'w-[120px] h-[120px]', text: 'text-base' },
   lg: { container: 'w-[200px] h-[200px]', text: 'text-2xl' }
