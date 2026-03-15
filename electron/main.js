@@ -261,12 +261,14 @@ function createWindow() {
 }
 
 let currentSettingsAccelerator = 'Alt+K'
-let currentMainPanelAccelerator = 'Alt+L'
+// On macOS, Option+L produces the '¬' character and is consumed by the OS before
+// Electron can claim it — even when globalShortcut.register() returns true. Skip
+// it entirely on macOS and use Alt+Shift+L as the platform default instead.
+let currentMainPanelAccelerator = process.platform === 'darwin' ? 'Alt+Shift+L' : 'Alt+L'
 
-// On macOS, Option+L (Alt+L) is intercepted by some IME/keyboard configurations
-// before Electron can claim it. Provide a fallback chain specific to the platform.
 const MACOS_FALLBACKS = {
   'Alt+L': ['Alt+Shift+L', 'Command+Shift+L'],
+  'Alt+Shift+L': ['Command+Shift+L'],
 }
 
 function tryRegister(accelerator, handler) {
