@@ -5,6 +5,36 @@ const { RESEARCH_TOOLS } = require('./tool-schema')
 const { executeToolCalls } = require('./tool-executor')
 const { buildAttachmentContext } = require('./attachment-context')
 
+function sanitizeSummary(summary) {
+  let text = String(summary || '').trim()
+  if (!text) return ''
+
+  text = text.replace(/\r\n/g, '\n')
+
+  const lines = text.split('\n')
+  while (lines.length > 0) {
+    const lastLine = String(lines[lines.length - 1] || '').trim()
+    if (!lastLine) {
+      lines.pop()
+      continue
+    }
+
+    const looksDanglingMarkdown =
+      lastLine.length < 40 &&
+      (/\*\*$/.test(lastLine) ||
+        /^\*\*[^*]*\)?$/.test(lastLine) ||
+        /^[-*]\s*$/.test(lastLine) ||
+        /^[([{\-*_`]+$/.test(lastLine))
+
+    if (!looksDanglingMarkdown) break
+    lines.pop()
+  }
+
+  text = lines.join('\n').trim()
+  text = text.replace(/\*\*([^*\n]{0,40})$/, '$1').trim()
+  return text
+}
+
 function createResearchLoop({ config, backboardClient, jinaClient, sessionStore, projectRoot, userDataPath }) {
   const systemPromptPath = path.join(projectRoot, 'electron', 'research-agent', 'system-prompt.md')
   let assistantPromise = null
