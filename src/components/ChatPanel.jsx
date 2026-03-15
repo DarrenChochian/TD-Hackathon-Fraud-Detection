@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BG_PANEL, BORDER_PINK, GLASS_BACKDROP, NEUTRAL_PANEL_FILL, NEUTRAL_CARD_FILL, PINK_GLOSS_FILL } from '../utils/constants'
 import MessageBubble from './MessageBubble'
 import ToolCard from './ToolCard'
@@ -18,6 +18,14 @@ export default function ChatPanel({
   onMouseLeave,
 }) {
   const [input, setInput] = useState('')
+  const messagesContainerRef = useRef(null)
+
+  useEffect(() => {
+    if (selectedChatId === null) return
+    const container = messagesContainerRef.current
+    if (!container) return
+    container.scrollTop = container.scrollHeight
+  }, [selectedChatId, messages])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -52,7 +60,7 @@ export default function ChatPanel({
 
         {selectedChatId === null ? (
           <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-0 relative z-10 flex flex-col">
-            <h3 className="text-pink-300 text-xs font-bold mb-2 px-1 uppercase tracking-wider">Recent Chats</h3>
+            <h3 className="text-pink-300 text-xs font-bold mb-2 px-1 uppercase tracking-wider">Recent Detections</h3>
             {history?.map((chat) => (
               <button
                 key={chat.id}
@@ -91,6 +99,7 @@ export default function ChatPanel({
             </div>
 
             <div
+              ref={messagesContainerRef}
               className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0"
               style={{
                 background: 'transparent',
