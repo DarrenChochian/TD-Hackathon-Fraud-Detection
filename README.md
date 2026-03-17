@@ -2,6 +2,8 @@
 
 <img width="806" height="557" alt="image" src="https://github.com/user-attachments/assets/9c1eff9c-a246-43e2-952a-b793ff67ec54" />
 
+Click to view https://www.youtube.com/watch?v=dzpufsOBo_g&t=2s
+
 TD Hackathon – Fraud Detection
 
 React + Electron desktop app (Vite, TypeScript).
