@@ -1,5 +1,7 @@
 # Fraudly
 
+<img width="806" height="557" alt="image" src="https://github.com/user-attachments/assets/9c1eff9c-a246-43e2-952a-b793ff67ec54" />
+
 TD Hackathon – Fraud Detection
 
 React + Electron desktop app (Vite, TypeScript).
